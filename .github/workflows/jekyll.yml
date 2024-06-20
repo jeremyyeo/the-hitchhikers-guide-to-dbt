@@ -33,6 +33,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Rename files for Jekyll
+        run: find . -name 'README.md' -exec bash -c 'mv $0 ${0/README.md/index.md}' {} \;
       - name: Setup Ruby
         uses: ruby/setup-ruby@8575951200e472d5f2d95c625da0c7bec8217c42 # v1.161.0
         with:

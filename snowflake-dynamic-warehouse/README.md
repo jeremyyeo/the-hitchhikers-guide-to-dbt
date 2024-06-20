@@ -1,3 +1,6 @@
+---
+---
+
 ## Dynamically changing the warehouse used for incremental models
 
 > Full credits to user `dbernett110` on the dbt Community Slack.
