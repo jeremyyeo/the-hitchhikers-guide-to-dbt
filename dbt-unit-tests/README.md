@@ -5,6 +5,20 @@
 
 https://docs.getdbt.com/docs/build/unit-tests
 
+All examples below use a `dbt_project.yml` file like so unless specified:
+
+```yaml
+# dbt_project.yml
+name: my_dbt_project
+profile: all
+config-version: 2
+version: "1.0.0"
+
+models:
+ my_dbt_project:
+    +materialized: table
+```
+
 ### Expect output to have no rows
 
 https://docs.getdbt.com/reference/resource-properties/unit-test-input
