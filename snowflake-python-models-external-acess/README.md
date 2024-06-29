@@ -354,3 +354,22 @@ select * from development_jyeo.dbt_jyeo.gandalf_says;
 | Speak friend and enter. |
 +-------------------------+
 ```
+
+Note that it's also possible to access the API using just the function we created previously in just a normal SQL model:
+
+```sql
+-- models/gandalf_says_alt.sql
+select development_jyeo.dbt_jyeo.my_api_function() as gandalf_says
+```
+
+Since a model like this would simply result in dbt issuing a SQL command like:
+
+```sql
+create or replace transient table development_jyeo.dbt_jyeo.gandalf_says_alt
+         as
+        (-- models/gandalf_says_alt.sql
+select development_jyeo.dbt_jyeo.my_api_function() as gandalf_says
+        );
+```
+
+And we know that we can already call that function (`my_api_function()`) successfully as tested previously. So a dbt Python model is not strictly necessary to use external API's here.
