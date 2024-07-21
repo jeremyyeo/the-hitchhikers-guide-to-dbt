@@ -10,11 +10,20 @@
 
 Example scenarios of how dbt snapshots come to have duplicates.
 
-> Following examples are on Snowflake but same concept should apply across different datawarehouses/databases.
+* [The unique key is not unique](#the-unique-key-is-not-unique)
+* [Race conditions / snapshot is running concurrently or in parallel](#race-conditions--snapshot-is-running-concurrently-or-in-parallel)
+* [There is a data type mismatch between the existing snapshot and the incoming raw data](#there-is-a-data-type-mismatch-between-the-existing-snapshot-and-the-incoming-raw-data)
+* [The `check_cols` configuration has been incorrectly configured](#the-check_cols-configuration-has-been-incorrectly-configured)
+
+> Any SQL examples below are on Snowflake but same concept should apply across different datawarehouses/databases.
+
+----
 
 ### Rule of thumb
 
 The responsiblity of dbt is to send the same exact SQL query everytime for a snapshot for the same SQL + Jinja (snapshot configuration) you have in your project. If you see that dbt is sending the same exact SQL query from one run to the next, but yet you have duplicates - then this is most likely not a dbt bug. If you do see that the queries are different everytime for the same SQL + Jinja (snapshot configuration), then it could be a dbt bug.
+
+----
 
 ### The unique key is not unique
 
