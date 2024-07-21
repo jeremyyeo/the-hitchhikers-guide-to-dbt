@@ -12,6 +12,10 @@ Example scenarios of how dbt snapshots come to have duplicates.
 
 > Following examples are on Snowflake but same concept should apply across different datawarehouses/databases.
 
+### Rule of thumb
+
+The responsiblity of dbt is to send the same exact SQL query everytime for a snapshot for the same SQL + Jinja (snapshot configuration) you have in your project. If you see that dbt is sending the same exact SQL query from one run to the next, but yet you have duplicates - then this is most likely not a dbt bug. If you do see that the queries are different everytime for the same SQL + Jinja (snapshot configuration), then it could be a dbt bug.
+
 ### The unique key is not unique
 
 https://docs.getdbt.com/docs/build/snapshots#ensure-your-unique-key-is-really-unique
@@ -37,9 +41,11 @@ id,name
 
 We check our raw data and we see that it is really unique now and we wonder why the night before our snapshot had run into errors. That's because it indeed was not unique the night before - just that the EL tool has come along and tidied this up before we arrived into the office for the day - and therefore we make the assumption that the raw data is always unique all the time. This will be difficult to track because the nature of snapshots is that raw data is always changing so our best bet is to make a backup of the raw data prior to snapshotting it - so that as we come into the office the next day, we can double check the condition of your raw data without it being affected by the nightly EL run.
 
-### The snapshot is running in parallel / concurrently
+### Race conditions / snapshot is running concurrently or in parallel
 
 If we are running multiple jobs that have the snapshot in them, there is a chance that both jobs coincide with one another and they both attempt to run the snapshot at the exact same time - or close to the exact same time. Because of this, there will be two `merge into <your snapshot table> using ...` statements that run in close proximity to another inserting the same data twice. If we have many dbt jobs, it can be difficult to easily identify which two (or more) job runs may be responsible for running our snapshots in parallel - in those cases, the query history logs provided by our datawarehouse could come in handy.
+
+Race condtions can be really tricky to identify and appear to be "a random bug with snapshots" on the outset.
 
 ### There is a data type mismatch between the existing snapshot and the incoming raw data
 
@@ -349,7 +355,7 @@ That they are not equivalent. Because they are not equivalent, the incoming data
 > -- 1970-01-01, 1970-01-01
 > ```
 
-Note that this example isn't exclusive to `date/timestamp` types but also for other data types like `float/decimal` types. Try snapshotting this for the first time:
+Note that this isn't exclusive to `date/timestamp` types but also for other data types like `float/decimal` types. Try snapshotting this for the first time:
 
 ```sql
 {% snapshot snappy %}
@@ -370,3 +376,189 @@ select 1 as id, 1.111 as c
 And then snapshot again. The outcome will be similar to the above - a seemingly new row with the exact same data:
 
 ![alt text](image-3.png)
+
+### The `check_cols` configuration has been incorrectly configured
+
+If you have a column of data that you do not want to "track" as being changed with the ["check" strategy](https://docs.getdbt.com/docs/build/snapshots#check-strategy) - you would configure a `check_cols` config. For example, if you have data like:
+
+```
+id,first_name,el_tool_exported_at
+1,alice,1970-01-01
+2,bob,1970-01-01
+```
+
+```
+id,first_name,el_tool_exported_at
+1,alice,1970-01-02
+2,eve,1970-01-02
+```
+
+```
+id,first_name,el_tool_exported_at
+1,alice,1970-01-03
+2,bob,1970-01-03
+```
+
+Your EL tool updates a column (`el_tool_exported_at`) everytime (even if the dimensions are unchanged) - ideally you want to ignore that column because having 3 rows where `id=1` has a `first_name` of `alice` three times defeats the purpose of the slowly changing dimension methodology. To generate the right DML that ignores changes to the `el_tool_exported_at` column, we would specify in the `check_cols` config which exact column TO check - like so:
+
+```sql
+{% snapshot snappy %}
+{{ config(target_schema='dbt_jyeo', unique_key='id', strategy='check', check_cols=['first_name']) }}
+select id, first_name, el_tool_exported_at
+  from {{ source('dbt_jyeo', 'raw') }}
+{% endsnapshot %}
+```
+
+A `check_cols=['first_name']` would generate DDL that only checks for differences in the `first_name` column:
+
+```sql
+    insertions as (
+
+        select
+            'insert' as dbt_change_type,
+            source_data.*
+
+        from insertions_source_data as source_data
+        left outer join snapshotted_data on snapshotted_data.dbt_unique_key = source_data.dbt_unique_key
+        where snapshotted_data.dbt_unique_key is null
+           or (
+                snapshotted_data.dbt_unique_key is not null
+            and (
+                (snapshotted_data."FIRST_NAME" != source_data."FIRST_NAME"
+        or
+        (
+            ((snapshotted_data."FIRST_NAME" is null) and not (source_data."FIRST_NAME" is null))
+            or
+            ((not snapshotted_data."FIRST_NAME" is null) and (source_data."FIRST_NAME" is null))
+        ))
+            )
+        )
+
+    ),
+```
+
+As we can see here, only the `first_name` / `"FIRST_NAME"` column is in the SQL and not `el_tool_exported_at`.
+
+Let's see how we can incorrectly configure this.
+
+```sql
+{% snapshot snappy %}
+{% set which_cols = dbt_utils.star(source('dbt_jyeo', 'raw'), except=['el_tool_exported_at']) %}
+{{ config(target_schema='dbt_jyeo', unique_key='id', strategy='check', check_cols=[which_cols]) }}
+select id, first_name, el_tool_exported_at
+  from {{ source('dbt_jyeo', 'raw') }}
+{% endsnapshot %}
+```
+
+Here, we are using the `star` method from the dbt-utils package (https://github.com/dbt-labs/dbt-utils#star-source) so that we don't have to type in all the columns that they want to check. We hope that what this will do is generate a list of columns to check, remove the `el_tool_exported_at` column from the output. Assign that to a variable `which_cols` and pass that into the snapshot `check_cols` config.
+
+Now, this doesn't work because of the nature of operations in dbt - that is dbt will always resolve configs FIRST before running any SQL queries (https://github.com/dbt-labs/docs.getdbt.com/discussions/1310). And the `dbt_utils.star` macro has to RUN a SQL query first before it is able to return a valid list of columns that removes the ones specified in the `except` config.
+
+This means that this macro (https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/star.sql#L10-L12) will return `*` during the parsing phase into `which_cols`. And this value will be then "locked in" for the `check_cols` config. 
+
+Effectively, what we have done is like so:
+
+```sql
+{{ config(..., check_cols=['*']) }}
+```
+
+**And not:**
+
+```sql
+{{ config(..., check_cols=['first_name'] }}
+```
+
+As we would have wanted it to. Because we have accidentally assigned a `*` here... thus the DDL becomes:
+
+```sql
+    insertions as (
+
+        select
+            'insert' as dbt_change_type,
+            source_data.*
+
+        from insertions_source_data as source_data
+        left outer join snapshotted_data on snapshotted_data.dbt_unique_key = source_data.dbt_unique_key
+        where snapshotted_data.dbt_unique_key is null
+           or (
+                snapshotted_data.dbt_unique_key is not null
+            and (
+                (snapshotted_data."ID" != source_data."ID"
+        or
+        (
+            ((snapshotted_data."ID" is null) and not (source_data."ID" is null))
+            or
+            ((not snapshotted_data."ID" is null) and (source_data."ID" is null))
+        ) or snapshotted_data."FIRST_NAME" != source_data."FIRST_NAME"
+        or
+        (
+            ((snapshotted_data."FIRST_NAME" is null) and not (source_data."FIRST_NAME" is null))
+            or
+            ((not snapshotted_data."FIRST_NAME" is null) and (source_data."FIRST_NAME" is null))
+        ) or snapshotted_data."EL_TOOL_EXPORTED_AT" != source_data."EL_TOOL_EXPORTED_AT"
+        or
+        (
+            ((snapshotted_data."EL_TOOL_EXPORTED_AT" is null) and not (source_data."EL_TOOL_EXPORTED_AT" is null))
+            or
+            ((not snapshotted_data."EL_TOOL_EXPORTED_AT" is null) and (source_data."EL_TOOL_EXPORTED_AT" is null))
+        ))
+            )
+        )
+
+    ),
+```
+
+As we can see here - the generated DDL is checking for differences in the column `el_tool_exported_at` / `"EL_TOOL_EXPORTED_AT"` as well as all the other ones when we didn't want it to because we didn't know that dbt simply has to resolve configs first (during parsing phase) before a SQL query even hits the database.
+
+Note that this "problem" doesn't just apply to this very specific `dbt_utils.star()` macro - it applies to anything you attempt to get some results back from the database / run some actual SQL to assign to a dbt config.
+
+Bonus tip: if you download your `manifest.json` and check your snapshot config - you can tell exact what `check_cols` resolved to:
+
+```json
+        "snapshot.my_dbt_project.snappy": {
+            "database": "development_jyeo",
+            "schema": "dbt_jyeo",
+            "name": "snappy",
+            "resource_type": "snapshot",
+            "package_name": "my_dbt_project",
+            "path": "snappy.sql",
+            "original_file_path": "snapshots/snappy.sql",
+            "unique_id": "snapshot.my_dbt_project.snappy",
+            "fqn": [
+                "my_dbt_project",
+                "snappy",
+                "snappy"
+            ],
+            "alias": "snappy",
+            "checksum": {
+                "name": "sha256",
+                "checksum": "b5185269af21421e6b443b398054189ffc6ddde14ec90f2d5d4e1bd6dc66f882"
+            },
+            "config": {
+                "enabled": true,
+                "alias": null,
+                "schema": null,
+                "database": null,
+                "tags": [],
+                "meta": {},
+                "group": null,
+                "materialized": "snapshot",
+                ...
+                "packages": [],
+                "docs": {
+                    "show": true,
+                    "node_color": null
+                },
+                "contract": {
+                    "enforced": false,
+                    "alias_types": true
+                },
+                "strategy": "check",
+                "target_schema": "dbt_jyeo",
+                "target_database": null,
+                "updated_at": null,
+                "check_cols": [
+                    "*"
+                ]
+            },
+```
