@@ -519,9 +519,9 @@ As we would have wanted it to. Because we have accidentally assigned a `*` here.
 
 As we can see here - the generated DDL is checking for differences in the column `el_tool_exported_at` / `"EL_TOOL_EXPORTED_AT"` as well as all the other ones when we didn't want it to because we didn't know that dbt simply has to resolve configs first (during parsing phase) before a SQL query even hits the database.
 
-Note that this "problem" doesn't just apply to this very specific `dbt_utils.star()` macro - it applies to anything you attempt to get some results back from the database / run some actual SQL to assign to a dbt config.
+Note that this "problem" doesn't just apply to this very specific `dbt_utils.star()` macro - it applies to anytime we attempt to get some results back from the database / run some actual SQL to assign to a dbt config.
 
-Bonus tip: if you download your `manifest.json` and check your snapshot config - you can tell exact what `check_cols` resolved to:
+Bonus tip: if we download our `manifest.json` and check our snapshot config - we can tell exact what `check_cols` resolved to:
 
 ```json
         "snapshot.my_dbt_project.snappy": {
@@ -533,41 +533,13 @@ Bonus tip: if you download your `manifest.json` and check your snapshot config -
             "path": "snappy.sql",
             "original_file_path": "snapshots/snappy.sql",
             "unique_id": "snapshot.my_dbt_project.snappy",
-            "fqn": [
-                "my_dbt_project",
-                "snappy",
-                "snappy"
-            ],
-            "alias": "snappy",
-            "checksum": {
-                "name": "sha256",
-                "checksum": "b5185269af21421e6b443b398054189ffc6ddde14ec90f2d5d4e1bd6dc66f882"
-            },
+            ...,
             "config": {
-                "enabled": true,
-                "alias": null,
-                "schema": null,
-                "database": null,
-                "tags": [],
-                "meta": {},
-                "group": null,
-                "materialized": "snapshot",
-                ...
-                "packages": [],
-                "docs": {
-                    "show": true,
-                    "node_color": null
-                },
-                "contract": {
-                    "enforced": false,
-                    "alias_types": true
-                },
-                "strategy": "check",
-                "target_schema": "dbt_jyeo",
-                "target_database": null,
-                "updated_at": null,
+                ...,
                 "check_cols": [
                     "*"
                 ]
             },
 ```
+
+^ See `check_cols: ["*"]`.
