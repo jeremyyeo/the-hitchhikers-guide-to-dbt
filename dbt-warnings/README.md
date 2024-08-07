@@ -105,3 +105,20 @@ $ dbt run
 ```
 
 We told dbt that there exist a model `bar` in the `schema.yml` file but in reality - it does not exist. Note it can also not exist due to a mismatched case - i.e. in the `schema.yml` file we did `name: Bar` (uppercase "B") but the model is actually `bar.sql` (lowercase "b").
+
+### Explicit transactional logic should be used only to wrap DML logic (MERGE, DELETE, UPDATE, etc)
+
+The full warning:
+
+```
+Snowflake adapter: [WARNING]: Explicit transactional logic should be used only to wrap DML
+logic (MERGE, DELETE, UPDATE, etc). The keywords BEGIN; and COMMIT; should be
+placed directly before and after your DML statement, rather than in separate
+statement calls or run_query() macros.
+```
+
+Which is usually accompanied by an error:
+
+```
+cannot access local variable 'connection' where it is not associated with a value
+```

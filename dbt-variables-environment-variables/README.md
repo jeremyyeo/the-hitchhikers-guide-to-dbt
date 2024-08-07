@@ -286,7 +286,7 @@ $ dbt compile -s foo --vars 'my_var: from_var_instead'
 select 'from_var_instead' as c
 ```
 
-### Setting configs using env vars
+### Setting configs with vars and env vars
 
 Here we want to set the `full_refresh` config to be `false` by default using a combination of env var and var.
 
@@ -369,16 +369,12 @@ Here, I ran it twice and we can see that the subsequent (incremental) run did an
 
 ```sh
 $ dbt --debug run --full-refresh
-
 04:08:02  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.8.4", "profile_name": "all", "target_name": "pg", "node_id": "model.my_dbt_project.foo"} */
-
       insert into "postgres"."public"."foo" ("id")
     (
         select "id"
         from "foo__dbt_tmp160802365778"
     )
-
-  
 04:08:02  SQL status: INSERT 0 1 in 0.0 seconds
 04:08:02  On model.my_dbt_project.foo: COMMIT
 04:08:02  Using postgres connection "model.my_dbt_project.foo"
@@ -415,7 +411,6 @@ $ dbt --debug run --full-refresh --vars 'var_full_refresh_allowed: allowed'
     -- models/foo.sql
 select 1 id
   );
-  
 04:14:29  SQL status: SELECT 1 in 0.0 seconds
 04:14:29  Using postgres connection "model.my_dbt_project.foo"
 04:14:29  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.8.4", "profile_name": "all", "target_name": "pg", "node_id": "model.my_dbt_project.foo"} */
