@@ -335,4 +335,14 @@ UnboundLocalError: cannot access local variable 'connection' where it is not ass
 
 It's not possible for a hook to successfully run a hook when the hook is simply a SQL comment text.
 
-So if you're running into a warning/error like this, be sure to double check that you're not returning something invalid like a SQL comment to your hook.
+So if you're running into a warning/error like this, be sure to double check that you're not returning something invalid like a SQL comment to your hook and if you must add comments - do something like:
+
+```sql
+-- macros/do_something.sql
+{% macro do_something() %}
+   {#/* I added this macro to track something. */#}
+   {% do run_query("select 'success' as did_model_finish") %}
+{% endmacro %}
+```
+
+Because that SQL comment is inside a Jinja comment (delimited by `{#` and `#}`) - then that won't get returned to the caller in the hook.
