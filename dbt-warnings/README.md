@@ -123,7 +123,7 @@ Which is usually accompanied by an error:
 cannot access local variable 'connection' where it is not associated with a value
 ```
 
-This is Snowflake exclusive and happens when you accidentally return a SQL comment to a hook (pre/post/on-run-start/on-run-end). Let's look at a quick example:
+Typically on Snowflake and happens when you accidentally return a SQL comment to a hook (pre/post/on-run-start/on-run-end). Let's look at a quick example:
 
 ```sql
 -- models/foo.sql
