@@ -3,6 +3,9 @@
 
 ## Manually persisting docs
 
+
+### Persisting docs with a run-operation
+
 Databricks example but most adapters work roughly the same way.
 
 When enabling [persist-docs](https://docs.getdbt.com/reference/resource-configs/persist_docs) - there will be some modifications to the DDL statements run during the creation of the relation and after the creation of the relation. Let's have a look:
@@ -176,3 +179,279 @@ $ dbt --debug run-operation add_comments
 ^ As we can see, we've submitted all the necessary DDL to add the descriptions of our models and columns to the various tables and columns on Databricks. Do a quick check in the Databricks UI:
 
 ![alt text](image.png)
+
+### Persisting docs if the object comments/descriptions were added outside of dbt
+
+> Snowflake example. 
+
+Let's assume we have some relations in Snowflake - and those have relation level / column level descriptions on them. Perhaps you have some fancy Codex thing that gives you auto descriptions or what have you.
+
+How can we make sure we write those back to the object if we did not want to pull them into `schema.yml` descriptions?
+
+First we create some sample relations and add some comments to them:
+
+```sql
+create or replace table db.sch.foo as (select 1 as id, 'alice' as first_name);
+alter table db.sch.foo set comment = 'The foo table.';
+comment on column db.sch.foo.id is 'The id.';
+comment on column db.sch.foo.first_name is 'The first name.';
+
+create or replace view db.sch.bar as (select 1 as id, 'alice' as first_name);
+alter view db.sch.bar set comment = 'The bar view.';
+-- comment on column db.sch.bar.id is 'The id.'; -- It's not possible to add column comments after the view is already created in Snowflake.
+```
+
+Then we add those models to our dbt project:
+
+```yaml
+# dbt_project.yml
+name: my_dbt_project
+profile: all
+config-version: 2
+version: "1.0.0"
+
+models:
+  my_dbt_project:
+    +materialized: table
+```
+
+```sql
+-- models/foo.sql
+{{ config(materialized='table', pre_hook="{{ store_descriptions(this) }}", post_hook="{{ write_descriptions(this) }}") }}
+select 1 as id, 'alice' as first_name
+
+-- models/bar.sql
+{{ config(materialized='view', pre_hook="{{ store_descriptions(this) }}", post_hook="{{ write_descriptions(this) }}") }}
+select 1 as id, 'alice' as first_name
+
+-- macros/store_write_descriptions.sql
+{% macro store_descriptions(this) %}
+  {#/* Store descriptions in temporary table. */#}
+  {% if execute %}
+    {% set query %}
+        create or replace table {{ this }}__dbt_description_relation as
+        with all_relations as (
+          select table_catalog as rel_database,
+                 table_schema as rel_schema,
+                 table_name as rel_name,
+                 comment as rel_comment
+            from {{ this.database }}.information_schema.tables 
+           union
+          select table_catalog as rel_database,
+                 table_schema as rel_schema,
+                 table_name as rel_name,
+                 comment as rel_comment
+            from {{ this.database }}.information_schema.views 
+        )
+        select * from all_relations 
+         where lower(rel_database) = lower('{{ this.database }}')
+           and lower(rel_schema) = lower('{{ this.schema }}')
+           and lower(rel_name) = lower('{{ this.name }}')
+        ;
+    {% endset %}
+    {% do run_query(query) %}
+
+    {% set query %}
+        create or replace table {{ this }}__dbt_description_columns as
+        select lower(column_name) as col_name, 
+               comment as col_comment
+          from {{ this.database }}.information_schema.columns
+         where lower(table_catalog) = lower('{{ this.database }}')
+           and lower(table_schema) = lower('{{ this.schema }}')
+           and lower(table_name) = lower('{{ this.name }}')
+        ;
+    {% endset %}
+    {% do run_query(query) %}
+  {% endif %}
+{% endmacro %}
+
+{% macro write_descriptions(this) %}
+  {% if execute %}
+    {#/* Write relation description. */#}
+    {% set query %}
+      select rel_comment from {{ this }}__dbt_description_relation;
+    {% endset %}
+    {% set rel_comment = run_query(query).columns[0].values()[0] %}
+    {% set query %}
+      alter {{ model.config.materialized }} {{ this }} set comment = '{{ rel_comment }}';
+    {% endset %}
+    {% do run_query(query) %}
+
+    {#/* Write column descriptions. */#}
+    {#/* It's not currently possible to alter the column comment on a view after the view has already been created. */#}
+    {#/* Retrieve comments stored during pre_hook. */#}
+    {% if model.config.materialized == 'table' %}
+      {% set col_comment_dict = {} %}
+      {% set query %}
+        select col_name, col_comment from {{ this }}__dbt_description_columns where col_comment is not null;
+      {% endset %}
+      {% set col_comments = run_query(query) %}
+      {% for col_comment in col_comments %}
+        {% do col_comment_dict.update({col_comment.values()[0]: col_comment.values()[1]}) %}
+      {% endfor %}
+
+      {#/* Retrieve current columns that exist on the relation after it is created - because it may have changed. */#}
+      {% set current_columns = adapter.get_columns_in_relation(this) %}
+      {% for current_column in current_columns %}
+        {% set current_column_name = current_column.column | lower %}
+        {% if current_column_name in col_comment_dict.keys() %}
+          {% set query %}
+            comment on column {{ this }}.{{ current_column_name }} is '{{ col_comment_dict[current_column_name] }}';
+          {% endset %}
+          {% do run_query(query) %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  {% endif %}
+{% endmacro %}
+```
+
+We have a macro that we run during a model's pre-hook - that will create a temporary table with:
+* The relation's comment.
+* The relation's column's comments.
+
+Then after the model is built - we have our post-hook - retrieve the values from that temporary table - and execute the right `alter ... comment` / `comment on ...` DDL.
+
+Let's see that in action:
+
+```sh
+$ dbt --debug run
+23:51:06  1 of 2 START sql view model sch.bar ............................................ [RUN]
+23:51:06  Re-using an available connection from the pool (formerly list_db_sch, now model.my_dbt_project.bar)
+23:51:06  Began compiling node model.my_dbt_project.bar
+23:51:06  Writing injected SQL for node "model.my_dbt_project.bar"
+23:51:06  Began executing node model.my_dbt_project.bar
+23:51:06  Using snowflake connection "model.my_dbt_project.bar"
+23:51:06  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+create or replace table db.sch.bar__dbt_description_relation as
+        with all_relations as (
+          select table_catalog as rel_database,
+                 table_schema as rel_schema,
+                 table_name as rel_name,
+                 comment as rel_comment
+            from db.information_schema.tables 
+           union
+          select table_catalog as rel_database,
+                 table_schema as rel_schema,
+                 table_name as rel_name,
+                 comment as rel_comment
+            from db.information_schema.views 
+        )
+        select * from all_relations 
+         where lower(rel_database) = lower('db')
+           and lower(rel_schema) = lower('sch')
+           and lower(rel_name) = lower('bar')
+        ;
+23:51:10  SQL status: SUCCESS 1 in 3.759 seconds
+23:51:10  Using snowflake connection "model.my_dbt_project.bar"
+23:51:10  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+create or replace table db.sch.bar__dbt_description_columns as
+        select lower(column_name) as col_name, 
+               comment as col_comment
+          from db.information_schema.columns
+         where lower(table_catalog) = lower('db')
+           and lower(table_schema) = lower('sch')
+           and lower(table_name) = lower('bar')
+        ;
+23:51:13  SQL status: SUCCESS 1 in 2.907 seconds
+23:51:13  Writing runtime sql for node "model.my_dbt_project.bar"
+23:51:13  Using snowflake connection "model.my_dbt_project.bar"
+23:51:13  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+create or replace   view db.sch.bar
+  
+   as (
+    
+
+select 1 as id, 'alice' as first_name
+  );
+23:51:13  SQL status: SUCCESS 1 in 0.280 seconds
+23:51:13  Using snowflake connection "model.my_dbt_project.bar"
+23:51:13  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+select rel_comment from db.sch.bar__dbt_description_relation;
+23:51:13  SQL status: SUCCESS 1 in 0.253 seconds
+23:51:13  Using snowflake connection "model.my_dbt_project.bar"
+23:51:13  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+alter view db.sch.bar set comment = 'The bar view.';
+23:51:13  SQL status: SUCCESS 1 in 0.227 seconds
+23:51:13  Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '4ca5e7e7-3afa-4417-adb6-d72abb87c3d8', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x13790f950>]}
+23:51:13  1 of 2 OK created sql view model sch.bar ....................................... [SUCCESS 1 in 7.52s]
+
+23:51:13  2 of 2 START sql table model sch.foo ........................................... [RUN]
+23:51:13  Re-using an available connection from the pool (formerly model.my_dbt_project.bar, now model.my_dbt_project.foo)
+23:51:13  Began compiling node model.my_dbt_project.foo
+23:51:13  Writing injected SQL for node "model.my_dbt_project.foo"
+23:51:13  Began executing node model.my_dbt_project.foo
+23:51:13  Using snowflake connection "model.my_dbt_project.foo"
+23:51:13  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+create or replace table db.sch.foo__dbt_description_relation as
+        with all_relations as (
+          select table_catalog as rel_database,
+                 table_schema as rel_schema,
+                 table_name as rel_name,
+                 comment as rel_comment
+            from db.information_schema.tables 
+           union
+          select table_catalog as rel_database,
+                 table_schema as rel_schema,
+                 table_name as rel_name,
+                 comment as rel_comment
+            from db.information_schema.views 
+        )
+        select * from all_relations 
+         where lower(rel_database) = lower('db')
+           and lower(rel_schema) = lower('sch')
+           and lower(rel_name) = lower('foo')
+        ;
+23:51:16  SQL status: SUCCESS 1 in 2.151 seconds
+23:51:16  Using snowflake connection "model.my_dbt_project.foo"
+23:51:16  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+create or replace table db.sch.foo__dbt_description_columns as
+        select lower(column_name) as col_name, 
+               comment as col_comment
+          from db.information_schema.columns
+         where lower(table_catalog) = lower('db')
+           and lower(table_schema) = lower('sch')
+           and lower(table_name) = lower('foo')
+        ;
+23:51:17  SQL status: SUCCESS 1 in 1.559 seconds
+23:51:17  Writing runtime sql for node "model.my_dbt_project.foo"
+23:51:17  Using snowflake connection "model.my_dbt_project.foo"
+23:51:17  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+create or replace transient table db.sch.foo
+         as
+        (
+
+select 1 as id, 'alice' as first_name
+        );
+23:51:18  SQL status: SUCCESS 1 in 0.682 seconds
+23:51:18  Using snowflake connection "model.my_dbt_project.foo"
+23:51:18  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+select rel_comment from db.sch.foo__dbt_description_relation;
+23:51:18  SQL status: SUCCESS 1 in 0.255 seconds
+23:51:18  Using snowflake connection "model.my_dbt_project.foo"
+23:51:18  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+alter table db.sch.foo set comment = 'The foo table.';
+23:51:18  SQL status: SUCCESS 1 in 0.237 seconds
+23:51:18  Using snowflake connection "model.my_dbt_project.foo"
+23:51:18  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+select col_name, col_comment from db.sch.foo__dbt_description_columns where col_comment is not null;
+23:51:19  SQL status: SUCCESS 2 in 0.293 seconds
+23:51:19  Using snowflake connection "model.my_dbt_project.foo"
+23:51:19  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+describe table db.sch.foo
+23:51:19  SQL status: SUCCESS 2 in 0.203 seconds
+23:51:19  Using snowflake connection "model.my_dbt_project.foo"
+23:51:19  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+comment on column db.sch.foo.id is 'The id.';
+23:51:19  SQL status: SUCCESS 1 in 0.248 seconds
+23:51:19  Using snowflake connection "model.my_dbt_project.foo"
+23:51:19  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+comment on column db.sch.foo.first_name is 'The first name.';
+23:51:19  SQL status: SUCCESS 1 in 0.224 seconds
+23:51:19  Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '4ca5e7e7-3afa-4417-adb6-d72abb87c3d8', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1430b2690>]}
+23:51:19  2 of 2 OK created sql table model sch.foo ...................................... [SUCCESS 1 in 5.98s]
+```
+
+Note again that it is not possible to add comments to view columns via the `comment on column ...` DDL:
+
+![alt text](image-1.png)
