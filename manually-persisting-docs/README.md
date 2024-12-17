@@ -3,6 +3,7 @@
 
 ## Manually persisting docs
 
+Examples where we persist docs in extraordinary ways.
 
 ### Persisting docs with a run-operation
 
@@ -179,6 +180,8 @@ $ dbt --debug run-operation add_comments
 ^ As we can see, we've submitted all the necessary DDL to add the descriptions of our models and columns to the various tables and columns on Databricks. Do a quick check in the Databricks UI:
 
 ![alt text](image.png)
+
+----
 
 ### Persisting docs if the object comments/descriptions were added outside of dbt
 
