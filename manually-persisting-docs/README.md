@@ -232,7 +232,7 @@ select 1 as id, 'alice' as first_name
   {#/* Store descriptions in temporary table. */#}
   {% if execute %}
     {% set query %}
-        create or replace table {{ this }}__dbt_description_relation as
+        create or replace temporary table {{ this }}__dbt_description_relation as
         with all_relations as (
           select table_catalog as rel_database,
                  table_schema as rel_schema,
@@ -255,7 +255,7 @@ select 1 as id, 'alice' as first_name
     {% do run_query(query) %}
 
     {% set query %}
-        create or replace table {{ this }}__dbt_description_columns as
+        create or replace temporary table {{ this }}__dbt_description_columns as
         select lower(column_name) as col_name, 
                comment as col_comment
           from {{ this.database }}.information_schema.columns
@@ -315,6 +315,8 @@ We have a macro that we run during a model's pre-hook - that will create a tempo
 
 Then after the model is built - we have our post-hook - retrieve the values from that temporary table - and execute the right `alter ... comment` / `comment on ...` DDL.
 
+The reason for creating temporary tables to store this data is that dbt cannot generally pass arbitrary data around the place - for example retriving some data in a pre-hook that we then want to use in a post-hook.
+
 Let's see that in action:
 
 ```sh
@@ -326,7 +328,7 @@ $ dbt --debug run
 23:51:06  Began executing node model.my_dbt_project.bar
 23:51:06  Using snowflake connection "model.my_dbt_project.bar"
 23:51:06  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
-create or replace table db.sch.bar__dbt_description_relation as
+create or replace temporary table db.sch.bar__dbt_description_relation as
         with all_relations as (
           select table_catalog as rel_database,
                  table_schema as rel_schema,
@@ -348,7 +350,7 @@ create or replace table db.sch.bar__dbt_description_relation as
 23:51:10  SQL status: SUCCESS 1 in 3.759 seconds
 23:51:10  Using snowflake connection "model.my_dbt_project.bar"
 23:51:10  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
-create or replace table db.sch.bar__dbt_description_columns as
+create or replace temporary table db.sch.bar__dbt_description_columns as
         select lower(column_name) as col_name, 
                comment as col_comment
           from db.information_schema.columns
@@ -386,7 +388,7 @@ alter view db.sch.bar set comment = 'The bar view.';
 23:51:13  Began executing node model.my_dbt_project.foo
 23:51:13  Using snowflake connection "model.my_dbt_project.foo"
 23:51:13  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
-create or replace table db.sch.foo__dbt_description_relation as
+create or replace temporary table db.sch.foo__dbt_description_relation as
         with all_relations as (
           select table_catalog as rel_database,
                  table_schema as rel_schema,
@@ -408,7 +410,7 @@ create or replace table db.sch.foo__dbt_description_relation as
 23:51:16  SQL status: SUCCESS 1 in 2.151 seconds
 23:51:16  Using snowflake connection "model.my_dbt_project.foo"
 23:51:16  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
-create or replace table db.sch.foo__dbt_description_columns as
+create or replace temporary table db.sch.foo__dbt_description_columns as
         select lower(column_name) as col_name, 
                comment as col_comment
           from db.information_schema.columns
@@ -454,6 +456,8 @@ comment on column db.sch.foo.first_name is 'The first name.';
 23:51:19  Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '4ca5e7e7-3afa-4417-adb6-d72abb87c3d8', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1430b2690>]}
 23:51:19  2 of 2 OK created sql table model sch.foo ...................................... [SUCCESS 1 in 5.98s]
 ```
+
+We can see that even without a `schema.yml` file where we have descriptions - we have successfully reapplied the relation/column comments that were previously there. 
 
 Note again that it is not possible to add comments to view columns via the `comment on column ...` DDL:
 
