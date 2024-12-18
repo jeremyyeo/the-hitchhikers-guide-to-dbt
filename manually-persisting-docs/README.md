@@ -196,12 +196,14 @@ First we create some sample relations and add some comments to them:
 ```sql
 create or replace table db.sch.foo as (select 1 as id, 'alice' as first_name);
 alter table db.sch.foo set comment = 'The foo table.';
-comment on column db.sch.foo.id is 'The id.';
-comment on column db.sch.foo.first_name is 'The first name.';
+alter table db.sch.foo alter id comment $$The id.$$;
+alter table db.sch.foo alter first_name comment $$The first name.$$;
 
 create or replace view db.sch.bar as (select 1 as id, 'alice' as first_name);
 alter view db.sch.bar set comment = 'The bar view.';
--- comment on column db.sch.bar.id is 'The id.'; -- It's not possible to add column comments after the view is already created in Snowflake.
+alter view db.sch.bar alter id comment $$The id.$$;
+
+-- comment on column db.sch.foo.id is 'The id.' -- Alternate syntax but this doesn't work on views.
 ```
 
 Then we add those models to our dbt project:
@@ -281,30 +283,27 @@ select 1 as id, 'alice' as first_name
     {% do run_query(query) %}
 
     {#/* Write column descriptions. */#}
-    {#/* It's not currently possible to alter the column comment on a view after the view has already been created. */#}
     {#/* Retrieve comments stored during pre_hook. */#}
-    {% if model.config.materialized == 'table' %}
-      {% set col_comment_dict = {} %}
-      {% set query %}
-        select col_name, col_comment from {{ this }}__dbt_description_columns where col_comment is not null;
-      {% endset %}
-      {% set col_comments = run_query(query) %}
-      {% for col_comment in col_comments %}
-        {% do col_comment_dict.update({col_comment.values()[0]: col_comment.values()[1]}) %}
-      {% endfor %}
+    {% set col_comment_dict = {} %}
+    {% set query %}
+      select col_name, col_comment from {{ this }}__dbt_description_columns where col_comment is not null;
+    {% endset %}
+    {% set col_comments = run_query(query) %}
+    {% for col_comment in col_comments %}
+      {% do col_comment_dict.update({col_comment.values()[0]: col_comment.values()[1]}) %}
+    {% endfor %}
 
-      {#/* Retrieve current columns that exist on the relation after it is created - because it may have changed. */#}
-      {% set current_columns = adapter.get_columns_in_relation(this) %}
-      {% for current_column in current_columns %}
-        {% set current_column_name = current_column.column | lower %}
-        {% if current_column_name in col_comment_dict.keys() %}
-          {% set query %}
-            comment on column {{ this }}.{{ current_column_name }} is '{{ col_comment_dict[current_column_name] }}';
-          {% endset %}
-          {% do run_query(query) %}
-        {% endif %}
-      {% endfor %}
-    {% endif %}
+    {#/* Retrieve current columns that exist on the relation after it is created - because it may have changed. */#}
+    {% set current_columns = adapter.get_columns_in_relation(this) %}
+    {% for current_column in current_columns %}
+      {% set current_column_name = current_column.column | lower %}
+      {% if current_column_name in col_comment_dict.keys() %}
+        {% set query %}
+          alter {{ model.config.materialized }} {{ this }} alter {{ current_column_name }} comment $${{ col_comment_dict[current_column_name] }}$$;
+        {% endset %}
+        {% do run_query(query) %}
+      {% endif %}
+    {% endfor %}
   {% endif %}
 {% endmacro %}
 ```
@@ -321,13 +320,13 @@ Let's see that in action:
 
 ```sh
 $ dbt --debug run
-23:51:06  1 of 2 START sql view model sch.bar ............................................ [RUN]
-23:51:06  Re-using an available connection from the pool (formerly list_db_sch, now model.my_dbt_project.bar)
-23:51:06  Began compiling node model.my_dbt_project.bar
-23:51:06  Writing injected SQL for node "model.my_dbt_project.bar"
-23:51:06  Began executing node model.my_dbt_project.bar
-23:51:06  Using snowflake connection "model.my_dbt_project.bar"
-23:51:06  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+01:07:15  1 of 2 START sql view model sch.bar ............................................ [RUN]
+01:07:15  Re-using an available connection from the pool (formerly list_db_sch, now model.my_dbt_project.bar)
+01:07:15  Began compiling node model.my_dbt_project.bar
+01:07:15  Writing injected SQL for node "model.my_dbt_project.bar"
+01:07:15  Began executing node model.my_dbt_project.bar
+01:07:15  Using snowflake connection "model.my_dbt_project.bar"
+01:07:15  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
 create or replace temporary table db.sch.bar__dbt_description_relation as
         with all_relations as (
           select table_catalog as rel_database,
@@ -347,9 +346,9 @@ create or replace temporary table db.sch.bar__dbt_description_relation as
            and lower(rel_schema) = lower('sch')
            and lower(rel_name) = lower('bar')
         ;
-23:51:10  SQL status: SUCCESS 1 in 3.759 seconds
-23:51:10  Using snowflake connection "model.my_dbt_project.bar"
-23:51:10  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+01:07:17  SQL status: SUCCESS 1 in 2.334 seconds
+01:07:17  Using snowflake connection "model.my_dbt_project.bar"
+01:07:17  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
 create or replace temporary table db.sch.bar__dbt_description_columns as
         select lower(column_name) as col_name, 
                comment as col_comment
@@ -358,10 +357,10 @@ create or replace temporary table db.sch.bar__dbt_description_columns as
            and lower(table_schema) = lower('sch')
            and lower(table_name) = lower('bar')
         ;
-23:51:13  SQL status: SUCCESS 1 in 2.907 seconds
-23:51:13  Writing runtime sql for node "model.my_dbt_project.bar"
-23:51:13  Using snowflake connection "model.my_dbt_project.bar"
-23:51:13  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+01:07:19  SQL status: SUCCESS 1 in 1.820 seconds
+01:07:19  Writing runtime sql for node "model.my_dbt_project.bar"
+01:07:19  Using snowflake connection "model.my_dbt_project.bar"
+01:07:19  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
 create or replace   view db.sch.bar
   
    as (
@@ -369,25 +368,38 @@ create or replace   view db.sch.bar
 
 select 1 as id, 'alice' as first_name
   );
-23:51:13  SQL status: SUCCESS 1 in 0.280 seconds
-23:51:13  Using snowflake connection "model.my_dbt_project.bar"
-23:51:13  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+01:07:20  SQL status: SUCCESS 1 in 0.449 seconds
+01:07:20  Using snowflake connection "model.my_dbt_project.bar"
+01:07:20  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
 select rel_comment from db.sch.bar__dbt_description_relation;
-23:51:13  SQL status: SUCCESS 1 in 0.253 seconds
-23:51:13  Using snowflake connection "model.my_dbt_project.bar"
-23:51:13  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+01:07:20  SQL status: SUCCESS 1 in 0.381 seconds
+01:07:20  Using snowflake connection "model.my_dbt_project.bar"
+01:07:20  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
 alter view db.sch.bar set comment = 'The bar view.';
-23:51:13  SQL status: SUCCESS 1 in 0.227 seconds
-23:51:13  Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '4ca5e7e7-3afa-4417-adb6-d72abb87c3d8', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x13790f950>]}
-23:51:13  1 of 2 OK created sql view model sch.bar ....................................... [SUCCESS 1 in 7.52s]
-
-23:51:13  2 of 2 START sql table model sch.foo ........................................... [RUN]
-23:51:13  Re-using an available connection from the pool (formerly model.my_dbt_project.bar, now model.my_dbt_project.foo)
-23:51:13  Began compiling node model.my_dbt_project.foo
-23:51:13  Writing injected SQL for node "model.my_dbt_project.foo"
-23:51:13  Began executing node model.my_dbt_project.foo
-23:51:13  Using snowflake connection "model.my_dbt_project.foo"
-23:51:13  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+01:07:20  SQL status: SUCCESS 1 in 0.344 seconds
+01:07:20  Using snowflake connection "model.my_dbt_project.bar"
+01:07:20  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+select col_name, col_comment from db.sch.bar__dbt_description_columns where col_comment is not null;
+01:07:21  SQL status: SUCCESS 1 in 0.397 seconds
+01:07:21  Using snowflake connection "model.my_dbt_project.bar"
+01:07:21  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+describe table db.sch.bar
+01:07:21  SQL status: SUCCESS 2 in 0.317 seconds
+01:07:21  Using snowflake connection "model.my_dbt_project.bar"
+01:07:21  On model.my_dbt_project.bar: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.bar"} */
+alter view db.sch.bar alter id comment $$The id.$$;
+01:07:21  SQL status: SUCCESS 1 in 0.353 seconds
+01:07:21  Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '020746bd-1123-4fe0-bba1-058966c79128', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x16a165410>]}
+01:07:21  1 of 2 OK created sql view model sch.bar ....................................... [SUCCESS 1 in 6.49s]
+01:07:21  Finished running node model.my_dbt_project.bar
+01:07:21  Began running node model.my_dbt_project.foo
+01:07:21  2 of 2 START sql table model sch.foo ........................................... [RUN]
+01:07:21  Re-using an available connection from the pool (formerly model.my_dbt_project.bar, now model.my_dbt_project.foo)
+01:07:21  Began compiling node model.my_dbt_project.foo
+01:07:21  Writing injected SQL for node "model.my_dbt_project.foo"
+01:07:21  Began executing node model.my_dbt_project.foo
+01:07:21  Using snowflake connection "model.my_dbt_project.foo"
+01:07:21  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
 create or replace temporary table db.sch.foo__dbt_description_relation as
         with all_relations as (
           select table_catalog as rel_database,
@@ -407,9 +419,9 @@ create or replace temporary table db.sch.foo__dbt_description_relation as
            and lower(rel_schema) = lower('sch')
            and lower(rel_name) = lower('foo')
         ;
-23:51:16  SQL status: SUCCESS 1 in 2.151 seconds
-23:51:16  Using snowflake connection "model.my_dbt_project.foo"
-23:51:16  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+01:07:24  SQL status: SUCCESS 1 in 2.199 seconds
+01:07:24  Using snowflake connection "model.my_dbt_project.foo"
+01:07:24  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
 create or replace temporary table db.sch.foo__dbt_description_columns as
         select lower(column_name) as col_name, 
                comment as col_comment
@@ -418,47 +430,47 @@ create or replace temporary table db.sch.foo__dbt_description_columns as
            and lower(table_schema) = lower('sch')
            and lower(table_name) = lower('foo')
         ;
-23:51:17  SQL status: SUCCESS 1 in 1.559 seconds
-23:51:17  Writing runtime sql for node "model.my_dbt_project.foo"
-23:51:17  Using snowflake connection "model.my_dbt_project.foo"
-23:51:17  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+01:07:26  SQL status: SUCCESS 1 in 1.894 seconds
+01:07:26  Writing runtime sql for node "model.my_dbt_project.foo"
+01:07:26  Using snowflake connection "model.my_dbt_project.foo"
+01:07:26  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
 create or replace transient table db.sch.foo
          as
         (
 
 select 1 as id, 'alice' as first_name
         );
-23:51:18  SQL status: SUCCESS 1 in 0.682 seconds
-23:51:18  Using snowflake connection "model.my_dbt_project.foo"
-23:51:18  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+01:07:26  SQL status: SUCCESS 1 in 0.841 seconds
+01:07:26  Using snowflake connection "model.my_dbt_project.foo"
+01:07:26  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
 select rel_comment from db.sch.foo__dbt_description_relation;
-23:51:18  SQL status: SUCCESS 1 in 0.255 seconds
-23:51:18  Using snowflake connection "model.my_dbt_project.foo"
-23:51:18  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+01:07:27  SQL status: SUCCESS 1 in 0.383 seconds
+01:07:27  Using snowflake connection "model.my_dbt_project.foo"
+01:07:27  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
 alter table db.sch.foo set comment = 'The foo table.';
-23:51:18  SQL status: SUCCESS 1 in 0.237 seconds
-23:51:18  Using snowflake connection "model.my_dbt_project.foo"
-23:51:18  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+01:07:27  SQL status: SUCCESS 1 in 0.425 seconds
+01:07:27  Using snowflake connection "model.my_dbt_project.foo"
+01:07:27  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
 select col_name, col_comment from db.sch.foo__dbt_description_columns where col_comment is not null;
-23:51:19  SQL status: SUCCESS 2 in 0.293 seconds
-23:51:19  Using snowflake connection "model.my_dbt_project.foo"
-23:51:19  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+01:07:28  SQL status: SUCCESS 2 in 0.394 seconds
+01:07:28  Using snowflake connection "model.my_dbt_project.foo"
+01:07:28  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
 describe table db.sch.foo
-23:51:19  SQL status: SUCCESS 2 in 0.203 seconds
-23:51:19  Using snowflake connection "model.my_dbt_project.foo"
-23:51:19  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
-comment on column db.sch.foo.id is 'The id.';
-23:51:19  SQL status: SUCCESS 1 in 0.248 seconds
-23:51:19  Using snowflake connection "model.my_dbt_project.foo"
-23:51:19  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
-comment on column db.sch.foo.first_name is 'The first name.';
-23:51:19  SQL status: SUCCESS 1 in 0.224 seconds
-23:51:19  Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '4ca5e7e7-3afa-4417-adb6-d72abb87c3d8', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1430b2690>]}
-23:51:19  2 of 2 OK created sql table model sch.foo ...................................... [SUCCESS 1 in 5.98s]
+01:07:28  SQL status: SUCCESS 2 in 0.318 seconds
+01:07:28  Using snowflake connection "model.my_dbt_project.foo"
+01:07:28  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+alter table db.sch.foo alter id comment $$The id.$$;
+01:07:28  SQL status: SUCCESS 1 in 0.403 seconds
+01:07:28  Using snowflake connection "model.my_dbt_project.foo"
+01:07:28  On model.my_dbt_project.foo: /* {"app": "dbt", "dbt_version": "1.9.0rc2", "profile_name": "all", "target_name": "sf", "node_id": "model.my_dbt_project.foo"} */
+alter table db.sch.foo alter first_name comment $$The first name.$$;
+01:07:29  SQL status: SUCCESS 1 in 0.345 seconds
+01:07:29  Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '020746bd-1123-4fe0-bba1-058966c79128', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1695b0950>]}
+01:07:29  2 of 2 OK created sql table model sch.foo ...................................... [SUCCESS 1 in 7.28s]
 ```
 
 We can see that even without a `schema.yml` file where we have descriptions - we have successfully reapplied the relation/column comments that were previously there. 
 
-Note again that it is not possible to add comments to view columns via the `comment on column ...` DDL:
+![alt text](image-2.png)
 
-![alt text](image-1.png)
+![alt text](image-3.png)
