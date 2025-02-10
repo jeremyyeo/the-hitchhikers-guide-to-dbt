@@ -25,6 +25,32 @@ The responsiblity of dbt is to send the same exact SQL query everytime for a sna
 
 ----
 
+### Quick hack for making your source data have a trully unique primary key
+
+```sql
+with src as (
+    select 1 as id, 'alice' as name, '1970-01-01'::date as updated_at
+     union all
+    select 1 as id, 'bob' as name, '1970-01-02'::date as updated_at
+),
+
+uniqueify as (
+    select *, 
+           row_number() over (partition by id order by updated_at desc) as rn
+      from src
+)
+
+select id, name, updated_at
+  from uniqueify
+ where rn = 1
+
+ -- (id: 1, name: bob, updated_at: 1970-01-02)
+```
+
+^ We need to do something like this to make sure the source we are snapping is trully unique - but sometimes that means you lose out on some data but that's what snapshots require to work properly - a trully unique unique key.
+
+----
+
 ### The unique key is not unique
 
 https://docs.getdbt.com/docs/build/snapshots#ensure-your-unique-key-is-really-unique
