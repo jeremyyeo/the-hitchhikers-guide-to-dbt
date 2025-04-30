@@ -3,6 +3,8 @@
 
 ## Incremental microbatch models
 
+### Default behaviour
+
 This is a quick write up on the default behaviour of microbatch models - with various scenarios. We're going to test by incrementing our system date, one day at a time to simulate the fact that we're running our job (i.e. dbt) on a different date/day.
 
 TL'DR:
@@ -10,7 +12,7 @@ TL'DR:
 1. The checkpoint / start date / the first batch is the current time period minus 1. Example: for a batch size of `day`, if dbt is running today and the current date today is `2025-03-05`, then the first batch run would be `2023-03-04`.
 2. The start date / first batch can be further in the past by configuring a static `lookback` config (default is `1` which gives the above behaviour).
 
-### Day 1 (2025-03-01)
+#### Day 1 (2025-03-01)
 
 The date of `2025-03-01` is the very start of our project.
 
@@ -98,7 +100,7 @@ The current state of `my_first_microbatch` looks like:
 |----|------------|------------|
 | 1  | alice      | 2025-03-01 |
 
-### Day 2 (2025-03-02)
+#### Day 2 (2025-03-02)
 
 Day 2 rolls around, and let's update our raw data, since overnight, our data loading processess would have done it's job:
 
@@ -240,7 +242,7 @@ State of `my_first_microbatch` table as of `2025-03-02`:
 | 2  | bob        | 2025-03-02 |
 
 
-### Day 3 (2025-03-03)
+#### Day 3 (2025-03-03)
 
 Day 3 rolls around, and let's update our raw data again as the overnight data load has been completed:
 
@@ -381,7 +383,7 @@ State of `my_first_microbatch` table as of `2025-03-03`:
 | 2  | bob        | 2025-03-02 |
 | 3  | eve        | 2025-03-03 |
 
-### Batch lifecycle
+#### Batch lifecycle
 
 The pattern (emitted SQL) for day 3 is basically the same to day 2 above with the SQL DDL/DML taking on the form of, for each batch:
 
@@ -391,7 +393,7 @@ The pattern (emitted SQL) for day 3 is basically the same to day 2 above with th
 
 Let's do a few more test scenarios to see if the batching behaviour determined above is consistent - what happens if our raw data had been continuously updated but our dbt job had failed to run for whatever reason.
 
-### Day 4 (2025-03-04)
+#### Day 4 (2025-03-04)
 
 ```sql
 insert into db.raw.customers values (4, 'carol', '2025-03-04'::date);
@@ -408,7 +410,7 @@ State of `my_first_microbatch` table as of `2025-03-04`:
 | 3  | eve        | 2025-03-03 |
 
 
-### Day 5 (2025-03-05)
+#### Day 5 (2025-03-05)
 
 ```sql
 insert into db.raw.customers values (5, 'dave', '2025-03-05'::date);
@@ -424,7 +426,7 @@ State of `my_first_microbatch` table as of `2025-03-05`:
 | 2  | bob        | 2025-03-02 |
 | 3  | eve        | 2025-03-03 |
 
-### Day 6 (2025-03-06)
+#### Day 6 (2025-03-06)
 
 ```sql
 insert into db.raw.customers values (6, 'fay', '2025-03-06'::date);
@@ -440,7 +442,7 @@ State of `my_first_microbatch` table as of `2025-03-06`:
 | 2  | bob        | 2025-03-02 |
 | 3  | eve        | 2025-03-03 |
 
-### Day 7 (2025-03-07)
+#### Day 7 (2025-03-07)
 
 ```sql
 insert into db.raw.customers values (7, 'grace', '2025-03-07'::date);
@@ -734,7 +736,7 @@ Here we determine that the default configuration is for dbt to run 1 batch behin
 
 Let's test a different scenario - let's have our microbatch model run everyday as expected, but our raw source data not be updated everyday - basically the reverse scenario.
 
-### Day 8 (2025-03-08)
+#### Day 8 (2025-03-08)
 
 Raw data did not update but dbt did run:
 
@@ -874,7 +876,7 @@ The state of our microbatch model on `2025-03-08`:
 | 5  | dave       | 2025-03-05 |
 
 
-### Day 9 (2025-03-09)
+#### Day 9 (2025-03-09)
 
 Raw data did not update but dbt did run.
 
@@ -1015,7 +1017,7 @@ The state of our microbatch model on `2025-03-09`:
 | 5  | dave       | 2025-03-05 |
 
 
-### Day 10 (2025-03-10)
+#### Day 10 (2025-03-10)
 
 Raw data did not update but dbt did run. 
 
@@ -1158,7 +1160,7 @@ The state of our microbatch model on `2025-03-10`:
 
 The behaviour is basically identical to what we had before... we created a temporary table for the batch (e.g. `2025-03-10`), but there was no data in the raw source table for that particular batch - therefore, when the insert happened for that batch, there was nothing to insert (we see `SUCCESS 0` in the logs for the insert query).
 
-### Day 11 (2025-03-11)
+#### Day 11 (2025-03-11)
 
 On day 11, our raw data loader caught up and loaded all the missing data:
 
@@ -1370,3 +1372,90 @@ insert into db.sch.my_first_microbatch ("ID", "FIRST_NAME", "UPDATED_AT")
 ```
 
 With the key difference being `SUCCESS 0` vs `SUCCESS 1` on the `insert` on day 10 vs day 11 - which makes sense because the temp table `my_first_microbatch__dbt_tmp_20250310` created on day 10 had 0 rows of data but on day 11, it had 1 row of data.
+
+----
+
+### Dynamically limiting the `begin` config depending on the environment / target
+
+Sometimes, we may want to dynamically change the `begin` config - say for CI jobs since we don't want the microbatch model to be creating in our PR schema starting from the very beginning which can take a long time or be costly.
+
+```sql
+-- macros/limit_begin.sql
+{% macro limit_begin(initial_date, days_prior=2) %}
+    /*{# 
+    Due to partial parsing, the value returned may be stuck on a previous parse. 
+    Therefore we need to use an env var that changes every run - such as the dbt Cloud Run ID.
+    https://github.com/dbt-labs/dbt-core/issues/4364
+
+    If this is being used outside of a dbt Cloud run, then we may need to disable partial
+    parsing to get it to reevaluate via adding the `--no-partial-parse` flag to the invocation.
+    #}*/
+    {% set run_id = env_var("DBT_CLOUD_RUN_ID", 'not-a-dbt-cloud-run') %}
+    {% if target.name == 'prod' %}
+        {{ return(initial_date) }}
+    {% else %}
+        {% set alternate_date = (modules.datetime.datetime.today() - modules.datetime.timedelta(days=days_prior)).strftime('%Y-%m-%d') %}
+        {{ return(alternate_date) }}
+    {% endif %}
+{% endmacro %}
+
+-- models/events.sql
+{{ 
+    config(
+        materialized = 'incremental',
+        incremental_strategy = 'microbatch',
+        event_time = 'updated_at',
+        begin = limit_begin('2025-04-01', 2),
+        batch_size = 'day',
+        concurrent_batches = false
+    ) 
+}}
+
+select 1 as id, '2025-04-25'::date as updated_at
+```
+
+What will happen is that when the microbatch model runs and the `target.name` isn't 'prod' - the limit_being macro will return a date string which is 2 days prior to today...
+
+```sh
+$ date
+Wed Apr 30 12:49:45 NZST 2025
+
+$ dbt run --target ci
+...
+00:50:59  Concurrency: 1 threads (target='ci')
+00:50:59  
+00:51:02  1 of 1 START sql microbatch model dbt_cloud_pr_123.events ...................... [RUN]
+00:51:02  Batch 1 of 3 START batch 2025-04-28 of dbt_cloud_pr_123.events ....................... [RUN]
+00:51:03  Batch 1 of 3 OK created batch 2025-04-28 of dbt_cloud_pr_123.events .................. [SUCCESS 1 in 1.58s]
+00:51:03  Batch 2 of 3 START batch 2025-04-29 of dbt_cloud_pr_123.events ....................... [RUN]
+00:51:07  Batch 2 of 3 OK created batch 2025-04-29 of dbt_cloud_pr_123.events .................. [SUCCESS 1 in 3.52s]
+00:51:07  Batch 3 of 3 START batch 2025-04-30 of dbt_cloud_pr_123.events ....................... [RUN]
+00:51:10  Batch 3 of 3 OK created batch 2025-04-30 of dbt_cloud_pr_123.events .................. [SUCCESS 1 in 3.64s]
+00:51:10  1 of 1 OK created sql microbatch model dbt_cloud_pr_123.events ................. [SUCCESS in 8.75s]
+00:51:11  
+00:51:11  Finished running 1 incremental model in 0 hours 0 minutes and 11.82 seconds (11.82s).
+```
+
+And if it's in prod, the limit_macro simply returns `2025-04-01` and that's what the `begin` config will be set to:
+
+```sh
+$ dbt run --target prod
+...
+00:52:43  Concurrency: 1 threads (target='prod')
+00:52:43  
+00:52:46  1 of 1 START sql microbatch model prod.events .................................. [RUN]
+00:52:46  Batch 1 of 30 START batch 2025-04-01 of prod.events .................................. [RUN]
+00:52:47  Batch 1 of 30 OK created batch 2025-04-01 of prod.events ............................. [SUCCESS 1 in 1.26s]
+00:52:47  Batch 2 of 30 START batch 2025-04-02 of prod.events .................................. [RUN]
+00:52:50  Batch 2 of 30 OK created batch 2025-04-02 of prod.events ............................. [SUCCESS 1 in 3.15s]
+00:52:50  Batch 3 of 30 START batch 2025-04-03 of prod.events .................................. [RUN]
+00:52:53  Batch 3 of 30 OK created batch 2025-04-03 of prod.events ............................. [SUCCESS 1 in 3.44s]
+<TRUNCATED>
+00:54:11  Batch 28 of 30 START batch 2025-04-28 of prod.events ................................. [RUN]
+00:54:14  Batch 28 of 30 OK created batch 2025-04-28 of prod.events ............................ [SUCCESS 1 in 3.08s]
+00:54:14  Batch 29 of 30 START batch 2025-04-29 of prod.events ................................. [RUN]
+00:54:17  Batch 29 of 30 OK created batch 2025-04-29 of prod.events ............................ [SUCCESS 1 in 3.15s]
+00:54:17  Batch 30 of 30 START batch 2025-04-30 of prod.events ................................. [RUN]
+00:54:20  Batch 30 of 30 OK created batch 2025-04-30 of prod.events ............................ [SUCCESS 1 in 3.03s]
+00:54:20  1 of 1 OK created sql microbatch model prod.events ............................. [SUCCESS in 94.95s]
+```
