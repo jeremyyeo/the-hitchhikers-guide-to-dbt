@@ -3,6 +3,9 @@
 
 ## Incremental microbatch models
 
+1. [The default behaviour of microbatch models](#default-behaviour)
+2. [Dynamic begin config based on environment](#dynamically-limiting-the-begin-config-depending-on-the-environment--target)
+
 ### Default behaviour
 
 This is a quick write up on the default behaviour of microbatch models - with various scenarios. We're going to test by incrementing our system date, one day at a time to simulate the fact that we're running our job (i.e. dbt) on a different date/day.
@@ -1432,8 +1435,6 @@ $ dbt run --target ci
 00:51:07  Batch 3 of 3 START batch 2025-04-30 of dbt_cloud_pr_123.events ....................... [RUN]
 00:51:10  Batch 3 of 3 OK created batch 2025-04-30 of dbt_cloud_pr_123.events .................. [SUCCESS 1 in 3.64s]
 00:51:10  1 of 1 OK created sql microbatch model dbt_cloud_pr_123.events ................. [SUCCESS in 8.75s]
-00:51:11  
-00:51:11  Finished running 1 incremental model in 0 hours 0 minutes and 11.82 seconds (11.82s).
 ```
 
 And if it's in prod, the limit_macro simply returns `2025-04-01` and that's what the `begin` config will be set to:
