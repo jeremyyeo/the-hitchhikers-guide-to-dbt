@@ -1417,6 +1417,15 @@ Sometimes, we may want to dynamically change the `begin` config - say for CI job
 select 1 as id, '2025-04-25'::date as updated_at
 ```
 
+```yaml
+# dbt_project.yml
+...
+flags:
+  state_modified_compare_more_unrendered_values: true
+```
+
+> The `state_modified_compare_more_unrendered_values` flag is required so that the difference in the resolution of the `limit_begin()` macro being returned to the `begin` config does not falsely select the model to be "state:modified" if nothing material for that model has changed. https://docs.getdbt.com/reference/global-configs/behavior-changes#source-definitions-for-state
+
 What will happen is that when the microbatch model runs and the `target.name` isn't 'prod' - the limit_being macro will return a date string which is 2 days prior to today...
 
 ```sh
