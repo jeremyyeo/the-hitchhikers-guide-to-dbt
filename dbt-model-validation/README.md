@@ -172,7 +172,7 @@ Left up to the reader.
 
 ### Models contain certain columns
 
-Validate that models must contain certain columns.
+Validate that models must contain certain columns AFTER the models have already been built.
 
 ```sql
 -- macros/validate_model_columns.sql
@@ -254,3 +254,101 @@ $ dbt run
 23:23:14
 23:23:14  Done. PASS=1 WARN=0 ERROR=2 SKIP=0 NO-OP=0 TOTAL=3
 ```
+
+Validate that models must contain certain columns BEFORE the models have already been built.
+
+This method uses the `graph` variable - this means that the node columns dict is populated solely by the models `schema.yml` file. Therefore, the model sql body COULD actually have the required column but if it's undocumented (i.e. not explicitly written) in a schema.yml file, then we will fail.
+
+```sql
+-- macros/validate_model_columns.sql
+{% macro validate_model_columns(this, includes) %}
+  {% if execute %}
+    {% set includes = includes | list %}
+    {% for node in graph.nodes.values() %}
+      {% if node.name == this.identifier %}
+        {% set cols_in_rel = node.columns.keys() | list %}
+        {% set diff = includes | reject('in', cols_in_rel) | list %}
+          {% if diff | length > 0 %}
+            {% set msg %}
+              Model {{ this }} does not include required columns {{ diff }} in its schema.yml file.
+            {% endset %}
+            {% do exceptions.raise_compiler_error(msg) %}
+          {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+-- models/foo.sql
+select 1 as id, 'alice' as first_name
+
+-- models/bar.sql
+select 1 as id, 'alice' as first_name
+
+-- models/baz.sql
+select 'alice' as first_name
+```
+
+```yaml
+# dbt_project.yml
+name: analytics
+profile: sf
+version: "1.0.0"
+
+models:
+  analytics:
+    +materialized: table
+    +pre-hook: "{{ validate_model_columns(this, includes=['id']) }}"
+
+# models/schema.yml
+models:
+  - name: foo
+    columns:
+      - name: id
+  - name: baz
+    columns:
+      - name: id
+```
+
+```sh
+$ dbt run
+
+23:53:32  Running with dbt=1.10.0-rc2
+23:53:33  Registered adapter: snowflake=1.9.4
+23:53:33  Found 3 models, 589 macros
+23:53:33
+23:53:33  Concurrency: 1 threads (target='ci')
+23:53:33
+23:53:35  1 of 3 START sql table model sch.bar ........................................... [RUN]
+23:53:35  1 of 3 ERROR creating sql table model sch.bar .................................. [ERROR in 0.02s]
+23:53:35  2 of 3 START sql table model sch.baz ........................................... [RUN]
+23:53:36  2 of 3 OK created sql table model sch.baz ...................................... [SUCCESS 1 in 0.88s]
+23:53:36  3 of 3 START sql table model sch.foo ........................................... [RUN]
+23:53:37  3 of 3 OK created sql table model sch.foo ...................................... [SUCCESS 1 in 1.07s]
+23:53:37
+23:53:37  Finished running 3 table models in 0 hours 0 minutes and 4.49 seconds (4.49s).
+23:53:37
+23:53:37  Completed with 1 error, 0 partial successes, and 0 warnings:
+23:53:37
+23:53:37  Failure in model bar (models/bar.sql)
+23:53:37    Compilation Error in model bar (models/bar.sql)
+
+                Model db.sch.bar does not include required columns ['id'] in its schema.yml file.
+
+
+  > in macro validate_model_columns (macros/validate_model_columns.sql)
+  > called by macro run_hooks (macros/materializations/hooks.sql)
+  > called by macro materialization_table_snowflake (macros/materializations/table.sql)
+  > called by model bar (models/bar.sql)
+23:53:37
+23:53:37    compiled code at target/compiled/analytics/models/bar.sql
+23:53:37
+23:53:37  Done. PASS=2 WARN=0 ERROR=1 SKIP=0 NO-OP=0 TOTAL=3
+```
+
+What we see here is that:
+
+- Model `bar` did contain `id` when built - but we error simply because we didn't say so in it's schema yaml file.
+- Model `baz` did not contain `id` when built - but yet we did not error - this is because we have written column id into it's schema yaml file.
+
+The right balance is probably to combine the two methodologies.
