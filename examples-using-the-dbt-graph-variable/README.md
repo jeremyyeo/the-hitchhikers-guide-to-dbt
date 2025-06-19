@@ -142,6 +142,75 @@ We can see that after the models are created, we run a DDL `alter ... set tags (
 
 Note that it's possible to add object tags via the `databricks_tags` config (https://docs.getdbt.com/reference/resource-configs/databricks-configs#configuring-tables) - however, it's not possible to call a macro in the `dbt_project.yml` file when setting that config hence the above example where we use a post-hook to do it instead (since post-hooks can call macros).
 
+### Check for models that have a materialization of a certain type and have column constraints
+
+```sql
+-- macros/which.sql
+{% macro which(mat_name) %}
+    {% set all_models = graph.nodes.values() | selectattr("resource_type", "equalto", "model") %}
+    {% for model in all_models %}
+        /*{# Only models with contract enforcement and specific materialization #}*/
+        {% if model.config.materialized == mat_name and model.config.contract.enforced %}
+            {% set all_columns = model.columns %}
+            {% for k, v in all_columns.items() %}
+                /*{# Only columns with constraints #}*/
+                {% if v.constraints | length > 0 %}
+                    {% do print('Model ' ~ model.name ~ ' has constraints on column ' ~ k) %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endfor %}
+{% endmacro %}
+
+-- models/foo.sql
+{{ config(materialized='custom_mat') }}
+select 1 id, 1 c
+
+-- models/bar.sql
+{{ config(materialized='custom_mat') }}
+select 1 id
+
+-- models/baz.sql
+{{ config(materialized='custom_mat') }}
+select 1 id
+```
+
+```yaml
+# models/schema.yml
+models:
+  - name: foo
+    config:
+      contract: { enforced: true }
+    columns:
+      - name: id
+        data_type: int
+        constraints:
+          - type: unique
+      - name: c
+        data_type: int
+  - name: bar
+    config:
+      contract: { enforced: true }
+    constraints:
+      - type: not_null
+        columns: id
+    columns:
+      - name: id
+        data_type: int
+  - name: baz
+    columns:
+      - name: id
+```
+
+```sh
+$ dbt run-operation which --args 'mat_name: custom_mat'
+
+03:10:46  Running with dbt=1.10.1
+03:10:47  Registered adapter: snowflake=1.9.4
+03:10:47  Found 3 models, 478 macros
+Model foo has constraints on column id
+```
+
 ### Other examples
 
 https://gist.github.com/jeremyyeo/83adf1f412e5e497baef60e5ada35bf8
