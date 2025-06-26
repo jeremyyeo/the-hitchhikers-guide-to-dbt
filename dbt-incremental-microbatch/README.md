@@ -41,7 +41,7 @@ Which we select in an incremental microbatch model:
 
 ```sql
 -- models/my_first_microbatch.sql
-{{ 
+{{
     config(
         materialized='incremental',
         unique_key='id',
@@ -50,7 +50,7 @@ Which we select in an incremental microbatch model:
         begin='2025-03-01',
         batch_size='day',
         concurrent_batches=False
-    ) 
+    )
 }}
 
 select id, first_name, loaded_at as updated_at from {{ source('raw', 'customers') }}
@@ -59,7 +59,7 @@ select id, first_name, loaded_at as updated_at from {{ source('raw', 'customers'
 First build:
 
 ```sh
-$ sudo date -u 0301000025 # Set system datetime to 2025-03-20 00:00 UTC on macOS
+$ sudo date -u 0301000025 # Set system datetime to 2025-03-01 00:00 UTC on macOS
 $ dbt build
 
 [0m13:04:49.186344 [info ] [Thread-1 (]: 1 of 1 START sql microbatch model sch.my_first_microbatch ...................... [RUN]
@@ -95,13 +95,13 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250301 cascade
 [0m13:04:50.745461 [debug] [Thread-1 (]: Finished running node model.my_dbt_project.my_first_microbatch
 ```
 
-There's nothing too special going on, we create our microbatch model for the first time selecting from the raw data filtering for only the day `2025-03-01`. 
+There's nothing too special going on, we create our microbatch model for the first time selecting from the raw data filtering for only the day `2025-03-01`.
 
 The current state of `my_first_microbatch` looks like:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
 
 #### Day 2 (2025-03-02)
 
@@ -159,7 +159,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-01 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-02 00:00:00+00:00')
-    
+
     );
 [0m13:00:49.528850 [debug] [Thread-1 (]: SQL status: SUCCESS 1 in 0.358 seconds
 [0m13:00:49.530434 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -212,7 +212,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-02 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-03 00:00:00+00:00')
-    
+
     );
 [0m13:00:52.278254 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.339 seconds
 [0m13:00:52.279788 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -239,11 +239,10 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250302 cascade
 
 State of `my_first_microbatch` table as of `2025-03-02`:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
 
 #### Day 3 (2025-03-03)
 
@@ -300,7 +299,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-02 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-03 00:00:00+00:00')
-    
+
     );
 [0m13:00:19.962895 [debug] [Thread-1 (]: SQL status: SUCCESS 1 in 0.760 seconds
 [0m13:00:19.964411 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -353,7 +352,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-03 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-04 00:00:00+00:00')
-    
+
     );
 [0m13:00:22.825545 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.424 seconds
 [0m13:00:22.827319 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -380,11 +379,11 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250303 cascade
 
 State of `my_first_microbatch` table as of `2025-03-03`:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
 
 #### Batch lifecycle
 
@@ -402,16 +401,15 @@ Let's do a few more test scenarios to see if the batching behaviour determined a
 insert into db.raw.customers values (4, 'carol', '2025-03-04'::date);
 ```
 
-EL process worked and the raw source was updated but dbt did not run the model for whatever reason. 
+EL process worked and the raw source was updated but dbt did not run the model for whatever reason.
 
 State of `my_first_microbatch` table as of `2025-03-04`:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
-
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
 
 #### Day 5 (2025-03-05)
 
@@ -419,15 +417,15 @@ State of `my_first_microbatch` table as of `2025-03-04`:
 insert into db.raw.customers values (5, 'dave', '2025-03-05'::date);
 ```
 
-EL process worked and the raw source was updated but dbt did not run the model for whatever reason. 
+EL process worked and the raw source was updated but dbt did not run the model for whatever reason.
 
 State of `my_first_microbatch` table as of `2025-03-05`:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
 
 #### Day 6 (2025-03-06)
 
@@ -435,15 +433,15 @@ State of `my_first_microbatch` table as of `2025-03-05`:
 insert into db.raw.customers values (6, 'fay', '2025-03-06'::date);
 ```
 
-EL process worked and the raw source was updated but dbt did not run the model for whatever reason. 
+EL process worked and the raw source was updated but dbt did not run the model for whatever reason.
 
 State of `my_first_microbatch` table as of `2025-03-06`:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
 
 #### Day 7 (2025-03-07)
 
@@ -499,7 +497,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-06 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-07 00:00:00+00:00')
-    
+
     );
 [0m13:01:05.648655 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.456 seconds
 [0m13:01:05.650208 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -552,7 +550,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-07 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-08 00:00:00+00:00')
-    
+
     );
 [0m13:01:09.607186 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.511 seconds
 [0m13:01:09.608699 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -579,13 +577,13 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250307 cascade
 
 When dbt ran on day 7 (`2025-03-07`), after not running for 3 days (days 4, 5 and 6), the first batch that ran was for the date `2025-03-06` followed by the batch for the current date itself (`2025-03-07`). This means that our microbatch model necessarily missed out on some data - the state of the table as of `2025-03-07` after the dbt run is as follows:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
-| 6  | fay        | 2025-03-06 |
-| 7  | grace      | 2025-03-07 |
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
+| 6   | fay        | 2025-03-06 |
+| 7   | grace      | 2025-03-07 |
 
 Missing id's `4` and `5` from the source.
 
@@ -595,7 +593,7 @@ To do a backfill, because our daily job failed to run properly for those few day
 <summary>Expand...</summary>
 
 ```sh
-$ date -u 
+$ date -u
 Fri Mar 7 00:09:10 UTC 2025
 
 $ dbt build --event-time-start "2025-03-04" --event-time-end "2025-03-06"
@@ -639,7 +637,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-04 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-05 00:00:00+00:00')
-    
+
     );
 [0m13:13:35.288398 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.529 seconds
 [0m13:13:35.289905 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -692,7 +690,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-05 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-06 00:00:00+00:00')
-    
+
     );
 [0m13:13:38.197188 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.373 seconds
 [0m13:13:38.199620 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -723,15 +721,15 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250305 cascade
 
 We processed 2 batches for dates `2025-03-04` and `2025-03-05` which then brings our microbatch model back to speed:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
-| 6  | fay        | 2025-03-06 |
-| 7  | grace      | 2025-03-07 |
-| 4  | carol      | 2025-03-04 |
-| 5  | dave       | 2025-03-05 |
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
+| 6   | fay        | 2025-03-06 |
+| 7   | grace      | 2025-03-07 |
+| 4   | carol      | 2025-03-04 |
+| 5   | dave       | 2025-03-05 |
 
 > This table is displayed per the order they were inserted in to illustrate the order of operations instead of ordering them by `id` or `updated_at`.
 
@@ -788,7 +786,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-07 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-08 00:00:00+00:00')
-    
+
     );
 [0m13:00:13.168617 [debug] [Thread-1 (]: SQL status: SUCCESS 1 in 0.599 seconds
 [0m13:00:13.170114 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -841,7 +839,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-08 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-09 00:00:00+00:00')
-    
+
     );
 [0m13:00:16.327116 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.498 seconds
 [0m13:00:16.328667 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -868,16 +866,15 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250308 cascade
 
 The state of our microbatch model on `2025-03-08`:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
-| 6  | fay        | 2025-03-06 |
-| 7  | grace      | 2025-03-07 |
-| 4  | carol      | 2025-03-04 |
-| 5  | dave       | 2025-03-05 |
-
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
+| 6   | fay        | 2025-03-06 |
+| 7   | grace      | 2025-03-07 |
+| 4   | carol      | 2025-03-04 |
+| 5   | dave       | 2025-03-05 |
 
 #### Day 9 (2025-03-09)
 
@@ -928,7 +925,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-08 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-09 00:00:00+00:00')
-    
+
     );
 [0m13:01:27.599057 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.569 seconds
 [0m13:01:27.600595 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -981,7 +978,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-09 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-10 00:00:00+00:00')
-    
+
     );
 [0m13:01:30.346666 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.372 seconds
 [0m13:01:30.348311 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -1009,20 +1006,19 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250309 cascade
 
 The state of our microbatch model on `2025-03-09`:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
-| 6  | fay        | 2025-03-06 |
-| 7  | grace      | 2025-03-07 |
-| 4  | carol      | 2025-03-04 |
-| 5  | dave       | 2025-03-05 |
-
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
+| 6   | fay        | 2025-03-06 |
+| 7   | grace      | 2025-03-07 |
+| 4   | carol      | 2025-03-04 |
+| 5   | dave       | 2025-03-05 |
 
 #### Day 10 (2025-03-10)
 
-Raw data did not update but dbt did run. 
+Raw data did not update but dbt did run.
 
 <details>
 <summary>Expand...</summary>
@@ -1069,7 +1065,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-09 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-10 00:00:00+00:00')
-    
+
     );
 [0m13:00:16.789522 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.355 seconds
 [0m13:00:16.791182 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -1122,7 +1118,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-10 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-11 00:00:00+00:00')
-    
+
     );
 [0m13:00:19.762437 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.332 seconds
 [0m13:00:19.764550 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -1148,18 +1144,17 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250310 cascade
 
 </details>
 
-
 The state of our microbatch model on `2025-03-10`:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
-| 6  | fay        | 2025-03-06 |
-| 7  | grace      | 2025-03-07 |
-| 4  | carol      | 2025-03-04 |
-| 5  | dave       | 2025-03-05 |
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
+| 6   | fay        | 2025-03-06 |
+| 7   | grace      | 2025-03-07 |
+| 4   | carol      | 2025-03-04 |
+| 5   | dave       | 2025-03-05 |
 
 The behaviour is basically identical to what we had before... we created a temporary table for the batch (e.g. `2025-03-10`), but there was no data in the raw source table for that particular batch - therefore, when the insert happened for that batch, there was nothing to insert (we see `SUCCESS 0` in the logs for the insert query).
 
@@ -1221,7 +1216,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-10 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-11 00:00:00+00:00')
-    
+
     );
 [0m13:02:55.083384 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.601 seconds
 [0m13:02:55.084850 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -1274,7 +1269,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-11 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-12 00:00:00+00:00')
-    
+
     );
 [0m13:02:58.521479 [debug] [Thread-1 (]: SQL status: SUCCESS 0 in 0.347 seconds
 [0m13:02:58.523505 [debug] [Thread-1 (]: Using snowflake connection "model.my_dbt_project.my_first_microbatch"
@@ -1302,17 +1297,17 @@ drop table if exists db.sch.my_first_microbatch__dbt_tmp_20250311 cascade
 
 As we determined above, dbt will start the previous batch from the current date (`2025-03-11`) - i.e. `2025-03-10`, therefore the model will, just like before, be missing some rows of data:
 
-| id | first_name | updated_at |
-|----|------------|------------|
-| 1  | alice      | 2025-03-01 |
-| 2  | bob        | 2025-03-02 |
-| 3  | eve        | 2025-03-03 |
-| 6  | fay        | 2025-03-06 |
-| 4  | carol      | 2025-03-04 |
-| 5  | dave       | 2025-03-05 |
-| 7  | grace      | 2025-03-07 |
-| 10 | judy       | 2025-03-10 |
-| 11 | mike       | 2025-03-11 |
+| id  | first_name | updated_at |
+| --- | ---------- | ---------- |
+| 1   | alice      | 2025-03-01 |
+| 2   | bob        | 2025-03-02 |
+| 3   | eve        | 2025-03-03 |
+| 6   | fay        | 2025-03-06 |
+| 4   | carol      | 2025-03-04 |
+| 5   | dave       | 2025-03-05 |
+| 7   | grace      | 2025-03-07 |
+| 10  | judy       | 2025-03-10 |
+| 11  | mike       | 2025-03-11 |
 
 Missing id's `8` and `9` which we can resolve via adhoc runs with the `--event-time-start` / `--event-time-end` flags just like we did above.
 
@@ -1333,7 +1328,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-10 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-11 00:00:00+00:00')
-    
+
     );
 [13:00:19.762437 [debug] [Thread-1]: SQL status: SUCCESS 0 in 0.332 seconds
 
@@ -1361,7 +1356,7 @@ delete from db.sch.my_first_microbatch DBT_INTERNAL_TARGET
     where (
     DBT_INTERNAL_TARGET.updated_at >= to_timestamp_tz('2025-03-10 00:00:00+00:00')
     and DBT_INTERNAL_TARGET.updated_at < to_timestamp_tz('2025-03-11 00:00:00+00:00')
-    
+
     );
 [13:02:55.083384 [debug] [Thread-1]: SQL status: SUCCESS 0 in 0.601 seconds
 
@@ -1376,7 +1371,7 @@ insert into db.sch.my_first_microbatch ("ID", "FIRST_NAME", "UPDATED_AT")
 
 With the key difference being `SUCCESS 0` vs `SUCCESS 1` on the `insert` on day 10 vs day 11 - which makes sense because the temp table `my_first_microbatch__dbt_tmp_20250310` created on day 10 had 0 rows of data but on day 11, it had 1 row of data.
 
-----
+---
 
 ### Dynamically limiting the `begin` config depending on the environment / target
 
@@ -1385,8 +1380,8 @@ Sometimes, we may want to dynamically change the `begin` config - say for CI job
 ```sql
 -- macros/limit_begin.sql
 {% macro limit_begin(initial_date, days_prior=2) %}
-    /*{# 
-    Due to partial parsing, the value returned may be stuck on a previous parse. 
+    /*{#
+    Due to partial parsing, the value returned may be stuck on a previous parse.
     Therefore we need to use an env var that changes every run - such as the dbt Cloud Run ID.
     https://github.com/dbt-labs/dbt-core/issues/4364
 
@@ -1403,7 +1398,7 @@ Sometimes, we may want to dynamically change the `begin` config - say for CI job
 {% endmacro %}
 
 -- models/events.sql
-{{ 
+{{
     config(
         materialized = 'incremental',
         incremental_strategy = 'microbatch',
@@ -1411,7 +1406,7 @@ Sometimes, we may want to dynamically change the `begin` config - say for CI job
         begin = limit_begin('2025-04-01', 2),
         batch_size = 'day',
         concurrent_batches = false
-    ) 
+    )
 }}
 
 select 1 as id, '2025-04-25'::date as updated_at
@@ -1419,7 +1414,7 @@ select 1 as id, '2025-04-25'::date as updated_at
 
 ```yaml
 # dbt_project.yml
-...
+---
 flags:
   state_modified_compare_more_unrendered_values: true
 ```
@@ -1435,7 +1430,7 @@ Wed Apr 30 12:49:45 NZST 2025
 $ dbt run --target ci
 ...
 00:50:59  Concurrency: 1 threads (target='ci')
-00:50:59  
+00:50:59
 00:51:02  1 of 1 START sql microbatch model dbt_cloud_pr_123.events ...................... [RUN]
 00:51:02  Batch 1 of 3 START batch 2025-04-28 of dbt_cloud_pr_123.events ....................... [RUN]
 00:51:03  Batch 1 of 3 OK created batch 2025-04-28 of dbt_cloud_pr_123.events .................. [SUCCESS 1 in 1.58s]
@@ -1452,7 +1447,7 @@ And if it's in prod, the limit_macro simply returns `2025-04-01` and that's what
 $ dbt run --target prod
 ...
 00:52:43  Concurrency: 1 threads (target='prod')
-00:52:43  
+00:52:43
 00:52:46  1 of 1 START sql microbatch model prod.events .................................. [RUN]
 00:52:46  Batch 1 of 30 START batch 2025-04-01 of prod.events .................................. [RUN]
 00:52:47  Batch 1 of 30 OK created batch 2025-04-01 of prod.events ............................. [SUCCESS 1 in 1.26s]
