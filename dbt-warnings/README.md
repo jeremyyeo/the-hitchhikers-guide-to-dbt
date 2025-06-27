@@ -22,10 +22,10 @@ config-version: 2
 version: "1.0.0"
 
 models:
-   my_dbt_project:
-      +materialized: table
-      marts:
-         +materialized: view
+  my_dbt_project:
+    +materialized: table
+    marts:
+      +materialized: view
 ```
 
 ```sql
@@ -42,16 +42,16 @@ $ dbt run
 There are 1 unused configuration paths:
 - models.my_dbt_project.marts
 00:49:55  Found 1 model, 0 sources, 0 exposures, 0 metrics, 352 macros, 0 groups, 0 semantic models
-00:49:55  
+00:49:55
 00:49:55  Concurrency: 4 threads (target='pg')
-00:49:55  
+00:49:55
 00:49:55  1 of 1 START sql table model public.foo ........................................ [RUN]
 00:49:55  1 of 1 OK created sql table model public.foo ................................... [SELECT 1 in 0.07s]
-00:49:55  
+00:49:55
 00:49:55  Finished running 1 table model in 0 hours 0 minutes and 0.20 seconds (0.20s).
-00:49:55  
+00:49:55
 00:49:55  Completed successfully
-00:49:55  
+00:49:55
 00:49:55  Done. PASS=1 WARN=0 ERROR=0 SKIP=0 TOTAL=1
 ```
 
@@ -91,16 +91,16 @@ $ dbt run
 01:21:31  Unable to do partial parsing because saved manifest not found. Starting full parse.
 01:21:31  [WARNING]: Did not find matching node for patch with name 'bar' in the 'models' section of file 'models/schema.yml'
 01:21:31  Found 1 model, 0 sources, 0 exposures, 0 metrics, 352 macros, 0 groups, 0 semantic models
-01:21:31  
+01:21:31
 01:21:31  Concurrency: 4 threads (target='pg')
-01:21:31  
+01:21:31
 01:21:31  1 of 1 START sql table model public.foo ........................................ [RUN]
 01:21:31  1 of 1 OK created sql table model public.foo ................................... [SELECT 1 in 0.08s]
-01:21:31  
+01:21:31
 01:21:31  Finished running 1 table model in 0 hours 0 minutes and 0.18 seconds (0.18s).
-01:21:31  
+01:21:31
 01:21:31  Completed successfully
-01:21:31  
+01:21:31
 01:21:31  Done. PASS=1 WARN=0 ERROR=0 SKIP=0 TOTAL=1
 ```
 
@@ -292,7 +292,6 @@ UnboundLocalError: cannot access local variable 'connection' where it is not ass
 
 ^ Now, instead of running without errors, we get a kinda complicated warning/error instead. The reason for this is that we have effectively returned a SQL comment text to the hook and the Snowflake adapter will run into an error if you try to run a hook that is a SQL comment. We can quicky reproduce the problem without a macro, like so:
 
-
 ```sql
 -- models/foo.sql
 {{ config(post_hook = "-- I added this macro to track something.") }}
@@ -324,7 +323,7 @@ statement calls or run_query() macros.
 04:11:56  Unhandled error while executing target/run/my_dbt_project/models/mart/foo.sql
 cannot access local variable 'connection' where it is not associated with a value
 04:11:56  Traceback (most recent call last):
-<TRUNCATED> 
+<TRUNCATED>
     return connection, cursor
            ^^^^^^^^^^
 UnboundLocalError: cannot access local variable 'connection' where it is not associated with a value
@@ -346,3 +345,38 @@ So if you're running into a warning/error like this, be sure to double check tha
 ```
 
 Because that SQL comment is inside a Jinja comment (delimited by `{#` and `#}`) - then that won't get returned to the caller in the hook.
+
+### Found patch for macro "..." which was not found
+
+This can happen when we document a macro which doesn't exist:
+
+```yaml
+# dbt_project.yml
+name: analytics
+profile: sf
+version: "1.0.0"
+
+models:
+  analytics:
+    +materialized: table
+
+# macros/schema.yml
+macros:
+  - name: cents_to_dollars
+    description: A macro to convert cents to dollars
+```
+
+```sql
+-- models/foo.sql
+select 1 id
+```
+
+```sh
+$ dbt parse --no-partial-parse
+04:43:56  Running with dbt=1.10.2
+04:43:56  Registered adapter: snowflake=1.9.4
+04:43:57  [WARNING]: Found patch for macro "cents_to_dollars" which was not found
+04:43:57  Performance info: /Users/jeremy/git/dbt-basic/target/perf_info.json
+```
+
+We have no macro named `cents_to_dollars` in our project, but we have a `schema.yml` that attempted to describe it.
