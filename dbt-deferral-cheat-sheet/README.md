@@ -3,7 +3,7 @@
 
 ## dbt deferral cheat sheet
 
-![alt text](image.png)
+![alt text](image-1.png)
 
 1. Deferral in dbt always involves 2 states / environments.
 2. States are defined in their respective `manifest.json` files.
