@@ -3,6 +3,8 @@
 
 ## dbt deferral cheat sheet
 
+![alt text](image.png)
+
 1. Deferral in dbt always involves 2 states / environments.
 2. States are defined in their respective `manifest.json` files.
 
@@ -22,7 +24,7 @@ $ dbt build --defer --state path/to/downloaded/manifest.json
 
 ^ Here dbt will build the state of the current environment (i.e. the dbt project we're working with currently) (`target/manifest.json`) and then defer to the deffered state (`path/to/downloaded/manifest.json`).
 
-> In dbt Cloud, the deferred state is resolved automatically - users do not have to run commands like `--defer --state`.
+> In dbt Cloud, the deferred state is resolved automatically - users do not have to use flags like `--defer --state` to tell dbt to defer to a specific `manifest.json` file.
 
 Other examples of "current environment / state" vs "deferred environment / state":
 
