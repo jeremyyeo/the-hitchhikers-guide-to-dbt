@@ -44,7 +44,7 @@ The webserver window will show:
 127.0.0.1 - - [04/Sep/2025 16:21:27] "GET /?hello=world HTTP/1.1" 200 -
 ```
 
-^ Since we can see the param values in the browser window, we can then test that out with dbt.
+^ Since we can see the param values in the webserver window, we can then test that out with dbt.
 
 ```yaml
 # packages.yml
