@@ -5,6 +5,100 @@
 
 Some self notes when working on dbt itself.
 
+## dbt-core
+
+https://github.com/dbt-labs/dbt-core
+
+### Setup
+
+Official docs: https://github.com/dbt-labs/dbt-core/blob/main/CONTRIBUTING.md
+
+```sh
+git clone https://github.com/dbt-labs/dbt-core.git
+cd dbt-core
+
+# Install into in a new virtual environment.
+python -m venv venv
+source venv/bin/activate
+make dev
+
+# Test to see if things work.
+dbt --version
+```
+
+```sh
+Core:
+  - installed: 1.11.0-a1
+  - latest:    1.10.11   - Ahead of latest version!
+
+Plugins:
+  - postgres: 1.9.1a0 - Update available!
+
+  At least one plugin is out of date with dbt-core.
+  You can find instructions for upgrading here:
+  https://docs.getdbt.com/docs/installation
+```
+
+```sh
+# Try running the test suite.
+make test
+```
+
+```sh
+py: install_deps> python -I -m pip install -r dev-requirements.txt -r editable-requirements.txt
+py: commands[0]> .tox/py/bin/python -m pytest --cov=core --cov-report=xml tests/unit
+===================================================== test session starts ======================================================
+platform darwin -- Python 3.11.9, pytest-7.4.4, pluggy-1.6.0
+cachedir: .tox/py/.pytest_cache
+rootdir: /Users/jeremy/git/dbt-core
+configfile: pytest.ini
+plugins: csv-3.0.0, flaky-3.8.1, xdist-3.8.0, mock-3.15.0, hypothesis-6.138.15, dotenv-0.5.2, ddtrace-2.21.3, split-0.10.0, cov-7.0.0
+collected 1522 items
+
+tests/unit/test_artifact_upload.py ...............                                                                       [  0%]
+tests/unit/test_behavior_flags.py ...                                                                                    [  1%]
+tests/unit/test_compilation.py .......                                                                                   [  1%]
+...
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================================== tests coverage ========================================================
+_______________________________________ coverage: platform darwin, python 3.11.9-final-0 _______________________________________
+
+Coverage XML written to file coverage.xml
+========================================= 1514 passed, 8 skipped, 3 warnings in 35.09s =========================================
+  py: OK (140.68=setup[92.42]+cmd[48.26] seconds)
+  congratulations :) (140.70 seconds)
+[WARNING] repo `https://github.com/pre-commit/pre-commit-hooks` uses deprecated stage names (commit, push) which will be removed in a future version.  Hint: often `pre-commit autoupdate --repo https://github.com/pre-commit/pre-commit-hooks` will fix this.  if it does not -- consider reporting an issue to that repo.
+[WARNING] repo `https://github.com/pycqa/isort` uses deprecated stage names (commit, merge-commit, push) which will be removed in a future version.  Hint: often `pre-commit autoupdate --repo https://github.com/pycqa/isort` will fix this.  if it does not -- consider reporting an issue to that repo.
+black................................................(no files to check)Skipped
+flake8...............................................(no files to check)Skipped
+mypy.................................................(no files to check)Skipped
+```
+
+### Troubleshooting
+
+If you run into an error when you invoke `dbt` like:
+
+```sh
+dbt --version
+```
+
+```sh
+Traceback (most recent call last):
+  File "/Users/jeremy/git/dbt-core/venv/bin/dbt", line 3, in <module>
+    from dbt.cli.main import cli
+...
+  File "/Users/jeremy/git/dbt-core/core/dbt/jsonschemas.py", line 14, in <module>
+    from dbt.include.jsonschemas import JSONSCHEMAS_PATH
+ModuleNotFoundError: No module named 'dbt.include.jsonschemas'
+```
+
+Then you need to set the `PYTHONPATH` env var to the `/core` directory where you've cloned the repo to:
+
+```sh
+# '/Users/jeremy/git' is where I cloned the dbt-core repo to.
+export PYTHONPATH=/Users/jeremy/git/dbt-core/core
+```
+
 ## dbt-adapters
 
 https://github.com/dbt-labs/dbt-adapters
