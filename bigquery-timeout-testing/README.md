@@ -46,6 +46,8 @@ def main(seconds):
 
 ## No network issues
 
+### Query execution time > job execution timeout seconds
+
 Let's test when we have no network issues...
 
 ```yaml
@@ -185,6 +187,8 @@ And from the GCP Logs Explorer:
 
 ## Network issues
 
+### Query execution time > job execution timeout seconds
+
 To simulate networking issues, we're going to start the dbt invocation, and then after we see dbt log that the query has been sent to BQ, I'm going to turn off my wifi for a few minutes and then turn it back on.
 
 ![alt text](image-3.png)
@@ -200,6 +204,77 @@ And in Logs Explorer:
 ![alt text](image-5.png)
 
 ^ There's only a single `getqueryresults` this time compared to the previous one, since we dropped the network, we didn't come around to `getqueryresults` a second time.
+
+### Job execution timeout seconds > query execution time
+
+As an additional test, what happens when this is the other way round - i.e. model run time (120) is less than the configured timeout (600) and we drop our connection in the middle.
+
+```yaml
+# ~/.dbt/profiles.yml
+bq:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      job_execution_timeout_seconds: 600
+      ...
+```
+
+```sql
+-- models/foo.sql
+select dbt_jyeo.fake_sleep(120) as c1, '{{ target.job_execution_timeout_seconds }}' as c2
+```
+
+```sh
+$ dbt --debug run
+02:39:06  Got an exception trying to initialize tracking
+02:39:06  Running with dbt=1.10.13
+02:39:06  running dbt with arguments {'printer_width': '80', 'profiles_dir': '/Users/jeremy/.dbt', 'write_json': 'True', 'partial_parse': 'True', 'empty': 'False', 'warn_error': 'None', 'fail_fast': 'False', 'no_print': 'None', 'indirect_selection': 'eager', 'debug': 'True', 'use_experimental_parser': 'False', 'version_check': 'True', 'log_format': 'default', 'invocation_command': 'dbt --debug run', 'static_parser': 'True', 'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])', 'log_path': '/Users/jeremy/git/dbt-basic/logs', 'use_colors': 'True', 'target_path': 'None', 'send_anonymous_usage_stats': 'True', 'quiet': 'False', 'log_cache_events': 'False', 'introspect': 'True', 'cache_selected_only': 'False'}
+02:39:08  Registered adapter: bigquery=1.10.2
+02:39:08  checksum: 9f0c81e2574b4ff463f3d16d080df83c6982fc0372c9feeacae0504ac9ea3ffe, vars: {}, profile: , target: , version: 1.10.13
+02:39:08  Unable to do partial parsing because profile has changed
+02:39:08  Unable to do partial parsing because a project dependency has been added
+02:39:08  Unable to do partial parsing because a project config has changed
+02:39:08  Wrote artifact WritableManifest to /Users/jeremy/git/dbt-basic/target/manifest.json
+02:39:08  Wrote artifact SemanticManifest to /Users/jeremy/git/dbt-basic/target/semantic_manifest.json
+02:39:08  Found 1 model, 495 macros
+02:39:08
+02:39:08  Concurrency: 4 threads (target='dev')
+02:39:08
+02:39:08  Acquiring new bigquery connection 'master'
+02:39:08  Acquiring new bigquery connection 'list_cse-sandbox-319708'
+02:39:08  Opening a new connection, currently in state init
+02:39:10  Re-using an available connection from the pool (formerly list_cse-sandbox-319708, now list_cse-sandbox-319708_dbt_jyeo)
+02:39:10  Opening a new connection, currently in state closed
+02:39:11  Opening a new connection, currently in state init
+02:39:11  Began running node model.analytics.foo
+02:39:11  1 of 1 START sql table model dbt_jyeo.foo ...................................... [RUN]
+02:39:11  Re-using an available connection from the pool (formerly list_cse-sandbox-319708_dbt_jyeo, now model.analytics.foo)
+02:39:11  Began compiling node model.analytics.foo
+02:39:11  Writing injected SQL for node "model.analytics.foo"
+02:39:11  Began executing node model.analytics.foo
+02:39:12  Opening a new connection, currently in state closed
+02:39:13  Writing runtime sql for node "model.analytics.foo"
+02:39:13  On model.analytics.foo: /* {"app": "dbt", "dbt_version": "1.10.13", "profile_name": "bq", "target_name": "dev", "node_id": "model.analytics.foo"} */
+    create or replace table `cse-sandbox-319708`.`dbt_jyeo`.`foo`
+    OPTIONS()
+    as (
+      select dbt_jyeo.fake_sleep(120) as c1, '600' as c2
+    );
+02:39:14  BigQuery adapter: https://console.cloud.google.com/bigquery?project=cse-sandbox-319708&j=bq:US:4bcdd9a7-9572-46ce-9e97-5ae74290c311&page=queryresults
+```
+
+![alt text](image-6.png)
+
+^ Once the network connection drops and comes back on - dbt-bigquery is still hung/stall.
+
+![alt text](image-7.png)
+
+^ BQ UI shows that the query finished in the roughly 2 minutes (120 seconds) (`14:39:13 > 14:41:21`).
+
+![alt text](image-8.png)
+
+^ Logs Explorer has no further entries after the query actually finished (at `14:41:21`) (meaning dbt-bigquery didn't check for the query result once the network resumed).
 
 ## Network issues (Snowflake)
 
