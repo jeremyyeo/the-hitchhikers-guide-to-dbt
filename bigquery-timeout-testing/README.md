@@ -22,6 +22,69 @@ $ python --version
 Python 3.11.9
 ```
 
+## What is the dbt-bigquery `job_execution_timeout_seconds` really?
+
+TL;DR `job_execution_timeout_seconds` represents both:
+
+1. The waiting time for the HTTP response.
+2. How long until BQ terminates a running query.
+
+This is a long standing source of confusion for everyone in the industry however, as of this writing, the `job_execution_timeout_seconds` config in dbt-bigquery is passed to **two separate** bigquery client configs:
+
+```python
+# https://github.com/dbt-labs/dbt-adapters/blob/main/dbt-bigquery/src/dbt/adapters/bigquery/retry.py#L22-L38
+class RetryFactory:
+
+    def __init__(self, credentials: BigQueryCredentials) -> None:
+        self._retries = credentials.job_retries or 0
+        self._job_creation_timeout = credentials.job_creation_timeout_seconds
+        self._job_execution_timeout = credentials.job_execution_timeout_seconds
+        self._job_deadline = credentials.job_retry_deadline_seconds
+
+    def create_job_creation_timeout(self, fallback: float = _MINUTE) -> float:
+        return (
+            self._job_creation_timeout or fallback
+        )  # keep _MINUTE here so it's not overridden by passing fallback=None
+
+    def create_job_execution_timeout(self, fallback: float = _DAY) -> float:
+        return (
+            self._job_execution_timeout or fallback
+        )  # keep _DAY here so it's not overridden by passing fallback=None
+
+# https://github.com/dbt-labs/dbt-adapters/blob/main/dbt-bigquery/src/dbt/adapters/bigquery/connections.py#L595-L601
+    def _query_and_results(
+        self,
+        conn,
+        sql,
+        job_params,
+        job_id,
+        limit: Optional[int] = None,
+    ):
+        client: Client = conn.handle
+        timeout = self._retry.create_job_execution_timeout()
+        query_job_config = QueryJobConfig(**job_params)
+        query_job_config.job_timeout_ms = timeout * 1000  # convert to milliseconds
+        """Query the client and wait for results."""
+        # Cannot reuse job_config if destination is set and ddl is used
+        query_job = client.query(
+            query=sql,
+            job_config=query_job_config,
+            job_id=job_id,
+            job_retry=None,
+            timeout=self._retry.create_job_creation_timeout(),
+        )
+```
+
+As we can see from the above, we set both of these to the same value X:
+
+1. `client.query(timeout = X, ...)`
+
+   - This is about HTTP response not being received in X seconds on the client side ([reference](https://cloud.google.com/python/docs/reference/bigquery/latest/google.cloud.bigquery.client.Client#google_cloud_bigquery_client_Client_query)). Historically, dbt-bigquery only had this config which caused a lot of confusion as to why queries kept running on the BQ side even after X seconds have passed on the dbt side.
+
+2. `client.query(job_config = QueryJobConfig(job_timeout_ms = X), ...)`
+
+   - This is about BQ terminating a query when X seconds are reached ([reference](https://cloud.google.com/python/docs/reference/bigquery/latest/google.cloud.bigquery.job.QueryJobConfig)). This is traditionally more in line with what users are thinking off when they think "query timeout" instead of some HTTP response. Historically, dbt-bigquery did not set this value (because this is also (relatively) _newly_ settable in the bq python library (https://github.com/googleapis/python-bigquery/issues/1421)).
+
 ## Long running query simulation
 
 BigQuery doesn't have any native sleep function (unlike say Snowflake with `system$wait()`) so we need to simulate that with a BQ python function:
