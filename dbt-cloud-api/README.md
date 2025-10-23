@@ -83,3 +83,70 @@ $ python update_ip_restriction_rule.py
 ```
 
 ![alt text](image-1.png)
+
+## Retrieving audit log records
+
+https://docs.getdbt.com/dbt-cloud/api-v3#/operations/List%20Recent%20Audit%20Log%20Events
+
+Used for retrieving audit log records (last 90 days) and then writing the result to a csv.
+
+```python
+# retrieve_audit_log_records.py
+import requests
+import os
+import csv
+
+api_token = os.environ["DBT_CLOUD_API_TOKEN"]
+base_url = "https://cloud.getdbt.com/api/v3/accounts/66847"
+headers = {"Content-Type": "application/json", "Authorization": f"Token {api_token}"}
+
+# Set EVENT_FILTER to a specific event if interested - an example is shown below.
+# EVENT_FILTER = "v1.events.job_definition.changed"
+EVENT_FILTER = None
+if EVENT_FILTER:
+    full_url = base_url + f"/audit-logs?routing_key__in=['{EVENT_FILTER}']"
+else:
+    full_url = base_url + "/audit-logs"
+
+r = requests.request(
+    "GET",
+    f"{full_url}",
+    headers=headers,
+)
+r_json = r.json()
+all_records = r.json()["data"]
+extra_pagination = r.json()["extra"]["pagination"]
+total_count = extra_pagination["total_count"]
+print(f'Retrieved {extra_pagination["count"]} records of total {total_count}.')
+
+while len(all_records) < total_count:
+    """dbt Cloud API returns 100 records at a time so we need to paginate."""
+    print(f"Fetching again with offset {len(all_records)}.")
+    paged_url = full_url + ("&" if EVENT_FILTER else "?") + f"offset={len(all_records)}"
+    paged_request = requests.request("GET", paged_url, headers=headers)
+    paged_records = paged_request.json()["data"]
+    all_records = all_records + paged_records
+
+print(f"Retrieved a total of {len(all_records)} records.")
+
+# Write to csv.
+if all_records:
+    with open("data.csv", "w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=all_records[0].keys())
+        writer.writeheader()
+        for r in all_records:
+            writer.writerow(r)
+
+print(f"Audit log records written to file data.csv.")
+```
+
+```sh
+$ python retrieve_audit_log_records.py
+
+Retrieved 100 records of total 164.
+Fetching again with offset 100.
+Retrieved a total of 164 records.
+Audit log records written to file data.csv.
+```
+
+![alt text](image-2.png)
