@@ -116,6 +116,10 @@ And when checking the datatype of the `first_name` column with `null`, there app
 
 > There's likely other situations that we can simply sum up into a single statement: "the temp view being created has varchar columns of a size > `16777216`" and this wasn't possible before.
 
+Edit: The bundle change was not responsible for `null as varchar` emitting the different sizes - it was an internal Snowflake change that was not visible to customers (source: https://getdbt.slack.com/archives/CJN7XRF1B/p1755762907457929?thread_ts=1755683282.578429&cid=CJN7XRF1B):
+
+![alt text](image-4.png)
+
 How does this impact the dbt run?
 
 1. We create a temp table.
