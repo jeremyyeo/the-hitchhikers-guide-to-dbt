@@ -80,7 +80,6 @@ $ dbt sl query --metrics weight_total --group-by coffee_bean__region
 --------------------------------------
 ```
 
-
 Number of beans with weight of equal to or more than 20:
 
 ```sh
@@ -92,3 +91,52 @@ $ dbt sl query --metrics bean_count --where "{{ Metric('weight_total', group_by=
 --------------
 ```
 
+### New (2026) Semantic Layer Spec
+
+https://docs.getdbt.com/docs/build/latest-metrics-spec
+
+```yaml
+models:
+  - name: coffee_beans
+    semantic_model:
+      enabled: true
+    time_spine:
+      standard_granularity_column: updated_at
+    columns:
+      - name: updated_at
+        granularity: day
+        dimension:
+          type: time
+      - name: id
+        entity:
+          type: primary
+          name: coffee_bean
+      - name: region
+        dimension:
+          type: categorical
+
+    agg_time_dimension: updated_at
+    metrics:
+      - name: weight_total
+        agg: sum
+        expr: weight
+        type: simple
+      - name: bean_count
+        agg: sum
+        expr: 1
+        type: simple
+
+saved_queries:
+  - name: weight_total_by_region
+    query_params:
+      metrics:
+        - weight_total
+      group_by:
+        - "Dimension('coffee_beans__region')"
+
+exposures:
+  - name: my_dashie
+    type: dashboard
+    owner:
+      name: jeremy
+```
