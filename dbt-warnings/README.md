@@ -486,7 +486,7 @@ This worked as expected but with the warning thrown... let's try to get it compl
 {% endmaterialization %}
 ```
 
-^ As we can see here, instead of "getting" `tenants` directly from `config`, we would simply now retrieve it from the `config.meta` key instead.
+^ As we can see here, instead of "getting" `tenants` directly from `config`, we would simply now retrieve it from the `config.meta` key instead. Note: doing `tenants = config.meta_get('tenants')` would be another alternative to the approach shown above.
 
 ```diff
 #-- models/foo.sql
