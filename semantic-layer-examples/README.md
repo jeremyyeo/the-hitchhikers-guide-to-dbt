@@ -91,7 +91,7 @@ $ dbt sl query --metrics bean_count --where "{{ Metric('weight_total', group_by=
 --------------
 ```
 
-Filters on metrics
+### Filters on metrics
 
 ```yaml
 # models/semantic.yml
@@ -206,4 +206,47 @@ exposures:
     type: dashboard
     owner:
       name: jeremy
+```
+
+```yaml
+# models/semantic.yml
+models:
+  - name: coffee_beans
+    time_spine:
+      standard_granularity_column: updated_at
+    columns:
+      - name: updated_at
+        granularity: day
+        dimension:
+          type: time
+      - name: id
+        entity:
+          type: primary
+          name: coffee_bean
+      - name: region
+        dimension:
+          type: categorical
+    semantic_model:
+      enabled: true
+    agg_time_dimension: updated_at
+    metrics:
+      - name: weight_total_for_co
+        label: weight_total_for_co
+        type: simple
+        filter: |
+          {{ Dimension('coffee_bean__region') }} = 'CO'
+        agg: sum
+        expr: weight
+      - name: weight_total_for_br
+        label: weight_total_for_br
+        type: simple
+        filter: |
+          {{ Dimension('coffee_bean__region') }} = 'BR'
+        agg: sum
+        expr: weight
+      - name: bean_count
+        agg: sum
+        expr: 1
+        type: simple
+        hidden: true
 ```
