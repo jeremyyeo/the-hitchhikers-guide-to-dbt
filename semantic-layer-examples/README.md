@@ -158,9 +158,78 @@ $ mf query --metrics weight_total_for_br
                    30
 ```
 
+#### Custom dimension name
+
+```yaml
+# models/semantic.yml
+models:
+  - name: coffee_beans
+    time_spine:
+      standard_granularity_column: updated_at
+    columns:
+      - name: updated_at
+        granularity: day
+
+semantic_models:
+  - name: coffee_beans
+    model: ref('coffee_beans')
+    defaults:
+      agg_time_dimension: updated_at
+    entities:
+      - name: coffee_bean
+        type: primary
+        expr: id
+    dimensions:
+      - name: updated_at
+        type: time
+        type_params:
+          time_granularity: day
+      - name: origin # custom dimension name
+        type: categorical
+        expr: region
+    measures:
+      - name: weight
+        agg: sum
+        expr: weight
+
+metrics:
+  - name: weight_total
+    label: weight_total
+    type: simple
+    type_params:
+      measure: weight
+  - name: weight_total_for_co
+    label: weight_total_for_co
+    type: simple
+    type_params:
+      measure: weight
+    filter: |
+      {{ Dimension('coffee_bean__origin') }} = 'CO'
+```
+
+```sh
+$ mf query --metrics weight_total --group-by coffee_bean__origin
+✔ Success 🦄 - query completed after 1.25 seconds
+COFFEE_BEAN__ORIGIN      WEIGHT_TOTAL
+---------------------  --------------
+CO                                 60
+BR                                 30
+
+$ mf query --metrics weight_total_for_co
+✔ Success 🦄 - query completed after 0.66 seconds
+  WEIGHT_TOTAL_FOR_CO
+---------------------
+                   60
+```
+
+
 ### New (2026) Semantic Layer Spec
 
 https://docs.getdbt.com/docs/build/latest-metrics-spec
+
+```sh
+$ pip install dbt-core==1.12.0b2 dbt-snowflake dbt-metricflow
+```
 
 ```yaml
 models:
@@ -212,6 +281,7 @@ exposures:
 
 ```yaml
 # models/semantic.yml
+# generated with `dbt-autofix deprecations --semantic-layer`
 models:
   - name: coffee_beans
     time_spine:
@@ -251,4 +321,44 @@ models:
         expr: 1
         type: simple
         hidden: true
+```
+
+#### Custom dimension name
+
+```yaml
+# models/semantic.yml
+# generated with `dbt-autofix deprecations --semantic-layer`
+models:
+  - name: coffee_beans
+    time_spine:
+      standard_granularity_column: updated_at
+    columns:
+      - name: updated_at
+        granularity: day
+        dimension:
+          type: time
+      - name: id
+        entity:
+          type: primary
+          name: coffee_bean
+      - name: region
+        dimension:
+          type: categorical
+          name: origin # custom dimension name
+    semantic_model:
+      enabled: true
+    agg_time_dimension: updated_at
+    metrics:
+      - name: weight_total
+        label: weight_total
+        type: simple
+        agg: sum
+        expr: weight
+      - name: weight_total_for_co
+        label: weight_total_for_co
+        type: simple
+        filter: |
+          {{ Dimension('coffee_bean__origin') }} = 'CO'
+        agg: sum
+        expr: weight
 ```
