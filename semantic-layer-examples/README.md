@@ -227,6 +227,8 @@ $ mf query --metrics weight_total_for_co
 
 https://docs.getdbt.com/docs/build/latest-metrics-spec
 
+If you want to test the new spec, you need dbt-core 1.12:
+
 ```sh
 $ pip install dbt-core==1.12.0b2 dbt-snowflake dbt-metricflow
 ```
