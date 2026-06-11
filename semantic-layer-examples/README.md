@@ -91,6 +91,73 @@ $ dbt sl query --metrics bean_count --where "{{ Metric('weight_total', group_by=
 --------------
 ```
 
+Filters on metrics
+
+```yaml
+# models/semantic.yml
+models:
+  - name: coffee_beans
+    time_spine:
+      standard_granularity_column: updated_at
+    columns:
+      - name: updated_at
+        granularity: day
+
+semantic_models:
+  - name: coffee_beans
+    model: ref('coffee_beans')
+    defaults:
+      agg_time_dimension: updated_at
+    entities:
+      - name: coffee_bean
+        type: primary
+        expr: id
+    dimensions:
+      - name: updated_at
+        type: time
+        type_params:
+          time_granularity: day
+      - name: region
+        type: categorical
+    measures:
+      - name: weight
+        agg: sum
+        expr: weight
+      - name: bean_count
+        agg: sum
+        expr: 1
+
+metrics:
+  - name: weight_total_for_co
+    label: weight_total_for_co
+    type: simple
+    type_params:
+      measure: weight
+    filter: |
+      {{ Dimension('coffee_bean__region') }} = 'CO'
+  - name: weight_total_for_br
+    label: weight_total_for_br
+    type: simple
+    type_params:
+      measure: weight
+    filter: |
+      {{ Dimension('coffee_bean__region') }} = 'BR'
+```
+
+```sh
+$ mf query --metrics weight_total_for_co
+✔ Success 🦄 - query completed after 1.37 seconds
+  WEIGHT_TOTAL_FOR_CO
+---------------------
+                   60
+
+$ mf query --metrics weight_total_for_br
+✔ Success 🦄 - query completed after 0.71 seconds
+  WEIGHT_TOTAL_FOR_BR
+---------------------
+                   30
+```
+
 ### New (2026) Semantic Layer Spec
 
 https://docs.getdbt.com/docs/build/latest-metrics-spec
