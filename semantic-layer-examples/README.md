@@ -91,7 +91,7 @@ $ dbt sl query --metrics bean_count --where "{{ Metric('weight_total', group_by=
 --------------
 ```
 
-### Filters on metrics
+#### Filters on metrics
 
 ```yaml
 # models/semantic.yml
@@ -207,6 +207,8 @@ exposures:
     owner:
       name: jeremy
 ```
+
+#### Filters on metrics
 
 ```yaml
 # models/semantic.yml
